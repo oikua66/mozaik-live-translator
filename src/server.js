@@ -105,7 +105,17 @@ const server = http.createServer(async (req, res) => {
       if (!text) return json(res, 400, { error: "text is required" });
 
       const id = nextFragmentId++;
-      const event = SemanticEvent.create("source.fragment", inputAgent.getId(), { id, text });
+      const serverReceivedAt = Date.now();
+      const clientFinalAt = Number(body.clientFinalAt || 0) || null;
+      const browserToServerMs = clientFinalAt ? serverReceivedAt - clientFinalAt : null;
+      console.log(`⏱ #${id} speech-final → server: ${browserToServerMs ?? "n/a"} ms`);
+
+      const event = SemanticEvent.create("source.fragment", inputAgent.getId(), {
+        id,
+        text,
+        clientFinalAt,
+        serverReceivedAt,
+      });
       sendEvent(event, inputAgent.getId());
       return json(res, 202, { id });
     }
