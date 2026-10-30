@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { SemanticEvent } from "@mozaik-ai/core";
 import { initializeRuntime, join, resolveRuntime, sendEvent } from "./runtime.js";
 import { TranslatorState } from "./runtime.js";
-import { inputAgent, translatorAgent, editorAgent } from "./agents.js";
+import { inputAgent, translatorAgent, editorAgent, voiceWriterAgent } from "./agents.js";
 
 const PORT = Number(process.env.PORT || 3000);
 const root = fileURLToPath(new URL("../public/", import.meta.url));
@@ -16,6 +16,7 @@ initializeRuntime({
 join(inputAgent);
 join(translatorAgent);
 join(editorAgent);
+join(voiceWriterAgent);
 
 let nextFragmentId = 1;
 
@@ -47,16 +48,18 @@ function snapshot() {
     sourceBusy: state.sourceBusy,
     translationBusy: state.translationBusy,
     editBusy: state.editBusy,
+    voiceBusy: state.voiceBusy,
     sourceQueueLength: state.sourceQueue.length,
     translationQueueLength: state.translationQueue.length,
     editQueueLength: state.editQueue.length,
+    voiceQueueLength: state.voiceQueue.length,
     fragments: [...state.fragments.values()].sort((a, b) => a.id - b.id),
   };
 }
 
 function resetState({ sourceLanguage, targetLanguage, outputStyle }) {
   const state = resolveRuntime().state;
-  if (state.sourceBusy || state.translationBusy || state.editBusy) return false;
+  if (state.sourceBusy || state.translationBusy || state.editBusy || state.voiceBusy) return false;
   state.sourceLanguage = sourceLanguage || state.sourceLanguage;
   state.targetLanguage = targetLanguage || state.targetLanguage;
   state.outputStyle = outputStyle || state.outputStyle;
@@ -64,9 +67,11 @@ function resetState({ sourceLanguage, targetLanguage, outputStyle }) {
   state.sourceQueue.length = 0;
   state.translationQueue.length = 0;
   state.editQueue.length = 0;
+  state.voiceQueue.length = 0;
   state.activeSourceFragmentId = null;
   state.activeTranslationFragmentId = null;
   state.activeEditTask = null;
+  state.activeVoiceTask = null;
   nextFragmentId = 1;
   return true;
 }
@@ -119,7 +124,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && req.url === "/api/config") {
       const body = await readJson(req);
       const state = resolveRuntime().state;
-      if (state.sourceBusy || state.translationBusy || state.editBusy) {
+      if (state.sourceBusy || state.translationBusy || state.editBusy || state.voiceBusy) {
         return json(res, 409, { error: "Agents are busy. Stop speaking and wait before changing settings." });
       }
       state.sourceLanguage = body.sourceLanguage || state.sourceLanguage;
@@ -152,14 +157,14 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && req.url === "/api/save-voice") {
       const body = await readJson(req);
       const text = String(body.text || "").trim();
-      if (!text) return json(res, 400, { error: "No output text to save." });
-      if (text.length > 4096) return json(res, 400, { error: "Output is too long for one audio file." });
+      if (!text) return json(res, 400, { error: "No voice script to save." });
+      if (text.length > 4096) return json(res, 400, { error: "Voice script is too long for one audio file." });
 
       const audio = await createSpeech(text);
       const stamp = new Date().toISOString().replace(/[:.]/g, "-");
       res.writeHead(200, {
         "content-type": "audio/mpeg",
-        "content-disposition": `attachment; filename=translator-output-${stamp}.mp3`,
+        "content-disposition": `attachment; filename=translator-voice-${stamp}.mp3`,
         "content-length": audio.length,
         "cache-control": "no-store",
       });
@@ -181,5 +186,5 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`\n🌐 Live Translator UI: http://localhost:${PORT}`);
-  console.log("Speak in the browser; Mozaik agents process each final speech fragment.\n");
+  console.log("Speak in the browser; four Mozaik agents process each final speech fragment.\n");
 });
