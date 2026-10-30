@@ -29,6 +29,26 @@ function publishCustomEvent(type, producer, payload) {
   sendEvent(event, producer.getId());
 }
 
+function startNextSource(agent) {
+  const state = resolveRuntime().state;
+  if (state.sourceBusy || state.sourceQueue.length === 0) return;
+
+  const fragmentId = state.sourceQueue.shift();
+  const fragment = state.fragments.get(fragmentId);
+  if (!fragment) return;
+
+  state.sourceBusy = true;
+  state.activeSourceFragmentId = fragmentId;
+
+  console.log(`🔵 Source Agent START #${fragmentId}: ${fragment.rawSourceText}`);
+
+  runLoop(
+    agent.getId(),
+    `Restore punctuation and normal capitalization in this ${state.sourceLanguage} speech transcript. Do not translate, paraphrase, add, remove, or explain anything. Return only the corrected transcript:\n\n${fragment.rawSourceText}`,
+    inferenceInput(agent),
+  );
+}
+
 function startNextTranslation(agent) {
   const state = resolveRuntime().state;
   if (state.translationBusy || state.translationQueue.length === 0) return;
@@ -102,9 +122,9 @@ class ModelAnswerSpecification extends SituationSpecification {
 }
 
 export const inputAgent = createAgent({
-  name: "Input Agent",
-  capabilities: [],
-  instruction: "Receive source fragments and publish them into shared runtime state.",
+  name: "Source Agent",
+  capabilities: ["inference"],
+  instruction: "You clean speech transcripts by restoring punctuation and capitalization without changing the speaker's wording or meaning.",
   tools: [],
   handlers: [
     {
@@ -114,8 +134,33 @@ export const inputAgent = createAgent({
           const state = resolveRuntime().state;
           const { id, text } = event.payload;
           const fragment = state.createFragment(id, text);
-          console.log(`🔵 Input READY #${id}: ${fragment.sourceText}`);
-          publishCustomEvent("fragment.ready", inputAgent, { fragmentId: id });
+          state.sourceQueue.push(id);
+          console.log(`🔵 Source QUEUED #${id}: ${fragment.rawSourceText}`);
+          startNextSource(inputAgent);
+        },
+      },
+    },
+    {
+      specification: new ModelAnswerSpecification(),
+      processor: {
+        apply({ event }) {
+          if (event.producerId !== inputAgent.getId()) return;
+
+          const state = resolveRuntime().state;
+          const fragmentId = state.activeSourceFragmentId;
+          const fragment = state.fragments.get(fragmentId);
+          if (!fragment) return;
+
+          fragment.sourceText = answerText(event.payload.answer).trim() || fragment.rawSourceText;
+          fragment.sttStatus = "done";
+          fragment.normalizedAt = Date.now();
+
+          console.log(`✅ Source Agent DONE #${fragmentId}: ${fragment.sourceText}`);
+
+          state.sourceBusy = false;
+          state.activeSourceFragmentId = null;
+          publishCustomEvent("fragment.ready", inputAgent, { fragmentId });
+          startNextSource(inputAgent);
         },
       },
     },
