@@ -12,7 +12,7 @@
       <div>
         <div class="eyebrow">Mozaik Freestyle 2026</div>
         <h1>Live Multi-Agent Translator</h1>
-        <p>Speak in English, Serbian, Ukrainian or Russian. One agent cleans the source speech, one translates it, and one polishes the result.</p>
+        <p>Speak in English, Serbian, Ukrainian or Russian. Three agents coordinate in parallel: source cleanup, translation, and editing context.</p>
       </div>
       <button id="micButton" class="mic" type="button">🎙 Start microphone</button>
     </header>
@@ -52,6 +52,8 @@
       <div class="agent"><span id="editorDot" class="dot idle"></span><strong>Editor Agent</strong><span id="editorStatus">idle</span></div>
     </section>
 
+    <div id="latencyLine" class="latency">Latency: waiting for speech…</div>
+
     <section class="workspace">
       <article class="panel">
         <div class="panelhead"><h2>Original</h2><span id="listeningBadge">Ready</span></div>
@@ -60,7 +62,7 @@
       </article>
       <article class="panel">
         <div class="panelhead"><h2>Translation</h2><button id="copyButton" class="linkbutton" type="button">Copy</button></div>
-        <div id="translatedText" class="textstream empty">The polished translation will appear here.</div>
+        <div id="translatedText" class="textstream empty">The translation will appear here.</div>
       </article>
     </section>
 
