@@ -61,11 +61,11 @@ function startNextTranslation(agent) {
   state.activeTranslationFragmentId = fragmentId;
   fragment.translationStatus = "running";
 
-  console.log(`🟠 Translator START #${fragmentId}: ${fragment.sourceText}`);
+  console.log(`🟠 Translator START #${fragmentId}: ${fragment.rawSourceText}`);
 
   runLoop(
     agent.getId(),
-    `Translate this ${state.sourceLanguage} text into ${state.targetLanguage}. Return only the translation, no commentary:\n\n${fragment.sourceText}`,
+    `Translate this ${state.sourceLanguage} speech transcript into ${state.targetLanguage}. Correct obvious missing punctuation implicitly, preserve meaning and tone, and return only the translation with no commentary:\n\n${fragment.rawSourceText}`,
     inferenceInput(agent),
   );
 }
@@ -92,7 +92,7 @@ function startNextEdit(agent) {
 
   runLoop(
     agent.getId(),
-    `Polish this translated fragment so it sounds natural in ${state.targetLanguage}. Preserve meaning. Return only the polished fragment.\n\nPrevious context: ${previous || "(none)"}\n\nFragment: ${fragment.rawTranslation}`,
+    `Polish this translated fragment so it sounds natural in ${state.targetLanguage}. Preserve meaning. Return only the polished fragment.\n\nPrevious context: ${previous || "(none)"}\n\nSource transcript: ${fragment.sourceText || fragment.rawSourceText}\n\nTranslation: ${fragment.rawTranslation}`,
     inferenceInput(agent),
   );
 }
@@ -103,9 +103,9 @@ class SourceFragmentSpecification extends SituationSpecification {
   }
 }
 
-class FragmentReadySpecification extends SituationSpecification {
+class FragmentCreatedSpecification extends SituationSpecification {
   isSatisfiedBy({ event }) {
-    return event.type === "fragment.ready";
+    return event.type === "fragment.created";
   }
 }
 
@@ -136,6 +136,9 @@ export const inputAgent = createAgent({
           const fragment = state.createFragment(id, text);
           state.sourceQueue.push(id);
           console.log(`🔵 Source QUEUED #${id}: ${fragment.rawSourceText}`);
+
+          // Publish immediately so translation can run in parallel with source cleanup.
+          publishCustomEvent("fragment.created", inputAgent, { fragmentId: id });
           startNextSource(inputAgent);
         },
       },
@@ -159,7 +162,7 @@ export const inputAgent = createAgent({
 
           state.sourceBusy = false;
           state.activeSourceFragmentId = null;
-          publishCustomEvent("fragment.ready", inputAgent, { fragmentId });
+          publishCustomEvent("source.normalized", inputAgent, { fragmentId });
           startNextSource(inputAgent);
         },
       },
@@ -174,7 +177,7 @@ export const translatorAgent = createAgent({
   tools: [],
   handlers: [
     {
-      specification: new FragmentReadySpecification(),
+      specification: new FragmentCreatedSpecification(),
       processor: {
         apply({ event }) {
           const state = resolveRuntime().state;
