@@ -1,5 +1,6 @@
 const sourceLanguage = document.querySelector('#sourceLanguage');
 const targetLanguage = document.querySelector('#targetLanguage');
+const outputStyle = document.querySelector('#outputStyle');
 const voiceOutput = document.querySelector('#voiceOutput');
 const micButton = document.querySelector('#micButton');
 const clearButton = document.querySelector('#clearButton');
@@ -205,6 +206,7 @@ function render(state) {
 
   sourceLanguage.value = state.sourceLanguage || sourceLanguage.value;
   targetLanguage.value = state.targetLanguage || targetLanguage.value;
+  outputStyle.value = state.outputStyle || outputStyle.value;
 
   updateLatencyLine(fragments);
   requestTts();
@@ -318,7 +320,7 @@ function startRecognition() {
   listening = true;
   micButton.textContent = '■ Stop microphone';
   listeningBadge.textContent = 'Listening';
-  notice.textContent = 'Speak naturally. Three agents begin coordinated work in parallel.';
+  notice.textContent = `Speak naturally. Output style: ${outputStyle.options[outputStyle.selectedIndex].text}.`;
   render(stateCache || { fragments: [] });
   recognition.start();
 }
@@ -339,25 +341,30 @@ voiceOutput.addEventListener('change', () => {
   }
 });
 
-async function updateLanguages() {
+async function updateConfig() {
   if (listening) stopRecognition();
   cancelTts();
   try {
     const state = await api('/api/config', {
       method: 'POST',
-      body: JSON.stringify({ sourceLanguage: sourceLanguage.value, targetLanguage: targetLanguage.value }),
+      body: JSON.stringify({
+        sourceLanguage: sourceLanguage.value,
+        targetLanguage: targetLanguage.value,
+        outputStyle: outputStyle.value,
+      }),
     });
     lastSpokenFragmentId = Math.max(0, ...(state.fragments || []).map((f) => f.id || 0));
     render(state);
-    notice.textContent = 'Languages updated.';
+    notice.textContent = `Settings updated. Output style: ${outputStyle.options[outputStyle.selectedIndex].text}.`;
   } catch (error) {
     notice.textContent = error.message;
     await refresh();
   }
 }
 
-sourceLanguage.addEventListener('change', updateLanguages);
-targetLanguage.addEventListener('change', updateLanguages);
+sourceLanguage.addEventListener('change', updateConfig);
+targetLanguage.addEventListener('change', updateConfig);
+outputStyle.addEventListener('change', updateConfig);
 
 clearButton.addEventListener('click', async () => {
   if (listening) stopRecognition();
@@ -365,7 +372,11 @@ clearButton.addEventListener('click', async () => {
   try {
     const state = await api('/api/clear', {
       method: 'POST',
-      body: JSON.stringify({ sourceLanguage: sourceLanguage.value, targetLanguage: targetLanguage.value }),
+      body: JSON.stringify({
+        sourceLanguage: sourceLanguage.value,
+        targetLanguage: targetLanguage.value,
+        outputStyle: outputStyle.value,
+      }),
     });
     lastSpokenFragmentId = 0;
     uiRenderedAt.clear();
