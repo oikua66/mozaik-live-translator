@@ -3,6 +3,7 @@ const targetLanguage = document.querySelector('#targetLanguage');
 const outputStyle = document.querySelector('#outputStyle');
 const voiceOutput = document.querySelector('#voiceOutput');
 const micButton = document.querySelector('#micButton');
+const saveVoiceButton = document.querySelector('#saveVoiceButton');
 const clearButton = document.querySelector('#clearButton');
 const copyButton = document.querySelector('#copyButton');
 const originalText = document.querySelector('#originalText');
@@ -32,19 +33,8 @@ let lastSpokenFragmentId = 0;
 const uiRenderedAt = new Map();
 const voiceStartedAt = new Map();
 
-const recognitionLang = {
-  ru: 'ru-RU',
-  uk: 'uk-UA',
-  sr: 'sr-RS',
-  en: 'en-US',
-};
-
-const speechLang = {
-  ru: 'ru-RU',
-  uk: 'uk-UA',
-  sr: 'sr-RS',
-  en: 'en-US',
-};
+const recognitionLang = { ru: 'ru-RU', uk: 'uk-UA', sr: 'sr-RS', en: 'en-US' };
+const speechLang = { ru: 'ru-RU', uk: 'uk-UA', sr: 'sr-RS', en: 'en-US' };
 
 function setStatus(el, dot, value) {
   el.textContent = value;
@@ -60,9 +50,12 @@ function isSmartStyle() {
 }
 
 function visibleTranslation(fragment) {
-  // Faithful is the low-latency path. Smart styles wait for Editor reconciliation.
   if (isSmartStyle()) return fragment.finalText || '';
   return fragment.finalText || fragment.rawTranslation || '';
+}
+
+function currentOutputText() {
+  return (stateCache?.fragments || []).map((f) => visibleTranslation(f)).filter(Boolean).join(' ');
 }
 
 function updateLatencyLine(fragments) {
@@ -83,9 +76,7 @@ function updateLatencyLine(fragments) {
 
 function cancelTts() {
   ttsWaitingForMicStop = false;
-  if (speechSynthesisApi?.speaking || speechSynthesisApi?.pending) {
-    speechSynthesisApi.cancel();
-  }
+  if (speechSynthesisApi?.speaking || speechSynthesisApi?.pending) speechSynthesisApi.cancel();
   ttsPlaying = false;
 }
 
@@ -101,9 +92,7 @@ function pendingSpeakableBatch() {
   const fragments = (stateCache?.fragments || [])
     .filter((fragment) => fragment.id > lastSpokenFragmentId && visibleTranslation(fragment))
     .sort((a, b) => a.id - b.id);
-
   if (!fragments.length) return null;
-
   return {
     text: fragments.map((fragment) => visibleTranslation(fragment)).join(' '),
     lastId: fragments[fragments.length - 1].id,
@@ -126,7 +115,6 @@ function startTtsNow() {
 
   ttsPlaying = true;
   ttsWaitingForMicStop = false;
-
   const utterance = new SpeechSynthesisUtterance(batch.text);
   utterance.lang = speechLang[targetLanguage.value] || 'en-US';
   const voice = pickVoice(utterance.lang);
@@ -136,15 +124,10 @@ function startTtsNow() {
 
   utterance.onstart = () => {
     const startedAt = Date.now();
-    console.log(`[TIMING] TTS START ${startedAt}`);
-    for (const id of batch.fragmentIds) {
-      if (!voiceStartedAt.has(id)) voiceStartedAt.set(id, startedAt);
-    }
+    for (const id of batch.fragmentIds) if (!voiceStartedAt.has(id)) voiceStartedAt.set(id, startedAt);
     lastSpokenFragmentId = batch.lastId;
     listeningBadge.textContent = 'Speaking';
-    notice.textContent = isSmartStyle()
-      ? 'Speaking editor-verified translation.'
-      : 'Speaking fast faithful translation.';
+    notice.textContent = isSmartStyle() ? 'Speaking editor-verified translation.' : 'Speaking fast faithful translation.';
     updateLatencyLine(stateCache?.fragments || []);
   };
 
@@ -163,15 +146,13 @@ function startTtsNow() {
 
   speechSynthesisApi.cancel();
   setTimeout(() => {
-    if (!ttsPlaying) return;
-    speechSynthesisApi.speak(utterance);
+    if (ttsPlaying) speechSynthesisApi.speak(utterance);
   }, 60);
 }
 
 function requestTts() {
   if (!speechSynthesisApi || voiceOutput.value !== 'auto' || ttsPlaying || ttsWaitingForMicStop || userSpeaking) return;
   if (!pendingSpeakableBatch()) return;
-
   if (recognitionActive && recognition) {
     ttsWaitingForMicStop = true;
     listeningBadge.textContent = 'Preparing voice';
@@ -183,36 +164,26 @@ function requestTts() {
       ttsWaitingForMicStop = false;
     }
   }
-
   startTtsNow();
 }
 
 function render(state) {
   stateCache = state;
   const fragments = state.fragments || [];
-
   const source = fragments.map((f) => f.sourceText).filter(Boolean).join(' ');
   const translated = fragments.map((f) => visibleTranslation(f)).filter(Boolean).join(' ');
 
   for (const fragment of fragments) {
-    if (visibleTranslation(fragment) && !uiRenderedAt.has(fragment.id)) {
-      uiRenderedAt.set(fragment.id, Date.now());
-      console.log(`[TIMING] UI RENDER #${fragment.id} ${uiRenderedAt.get(fragment.id)}`);
-    }
+    if (visibleTranslation(fragment) && !uiRenderedAt.has(fragment.id)) uiRenderedAt.set(fragment.id, Date.now());
   }
 
   originalText.textContent = source || 'Your speech will appear here.';
-  translatedText.textContent = translated || (isSmartStyle()
-    ? 'Waiting for the editor-verified translation…'
-    : 'The translation will appear here.');
+  translatedText.textContent = translated || (isSmartStyle() ? 'Waiting for the editor-verified translation…' : 'The translation will appear here.');
   originalText.classList.toggle('empty', !source);
   translatedText.classList.toggle('empty', !translated);
+  saveVoiceButton.disabled = !translated;
 
-  setStatus(
-    inputStatus,
-    inputDot,
-    state.sourceBusy ? 'running' : state.sourceQueueLength ? 'queued' : listening ? 'listening' : 'idle',
-  );
+  setStatus(inputStatus, inputDot, state.sourceBusy ? 'running' : state.sourceQueueLength ? 'queued' : listening ? 'listening' : 'idle');
   setStatus(translatorStatus, translatorDot, state.translationBusy ? 'running' : state.translationQueueLength ? 'queued' : 'idle');
   setStatus(editorStatus, editorDot, state.editBusy ? 'running' : state.editQueueLength ? 'queued' : 'idle');
 
@@ -225,30 +196,21 @@ function render(state) {
 }
 
 async function api(path, options = {}) {
-  const response = await fetch(path, {
-    headers: { 'content-type': 'application/json', ...(options.headers || {}) },
-    ...options,
-  });
+  const response = await fetch(path, { headers: { 'content-type': 'application/json', ...(options.headers || {}) }, ...options });
   const body = await response.json();
   if (!response.ok) throw new Error(body.error || `HTTP ${response.status}`);
   return body;
 }
 
 async function refresh() {
-  try {
-    render(await api('/api/state'));
-  } catch (error) {
-    notice.textContent = `Connection error: ${error.message}`;
-  }
+  try { render(await api('/api/state')); }
+  catch (error) { notice.textContent = `Connection error: ${error.message}`; }
 }
 
 async function sendFragment(text, clientFinalAt) {
   const clean = text.trim();
   if (!clean) return;
-  await api('/api/fragment', {
-    method: 'POST',
-    body: JSON.stringify({ text: clean, clientFinalAt }),
-  });
+  await api('/api/fragment', { method: 'POST', body: JSON.stringify({ text: clean, clientFinalAt }) });
   interimText.textContent = '';
   await refresh();
 }
@@ -257,9 +219,7 @@ function stopRecognition() {
   listening = false;
   userSpeaking = false;
   ttsWaitingForMicStop = false;
-  if (recognition) {
-    try { recognition.abort(); } catch {}
-  }
+  if (recognition) { try { recognition.abort(); } catch {} }
   recognitionActive = false;
   cancelTts();
   micButton.textContent = '🎙 Start microphone';
@@ -278,29 +238,16 @@ function startRecognition() {
   recognition.lang = recognitionLang[sourceLanguage.value];
   recognition.continuous = true;
   recognition.interimResults = true;
-
-  recognition.onstart = () => {
-    recognitionActive = true;
-  };
-
-  recognition.onspeechstart = () => {
-    userSpeaking = true;
-    listeningBadge.textContent = 'Listening';
-  };
-
-  recognition.onspeechend = () => {
-    userSpeaking = false;
-  };
-
+  recognition.onstart = () => { recognitionActive = true; };
+  recognition.onspeechstart = () => { userSpeaking = true; listeningBadge.textContent = 'Listening'; };
+  recognition.onspeechend = () => { userSpeaking = false; };
   recognition.onresult = async (event) => {
     let interim = '';
     for (let i = event.resultIndex; i < event.results.length; i += 1) {
       const text = event.results[i][0].transcript;
       if (event.results[i].isFinal) {
         userSpeaking = false;
-        const clientFinalAt = Date.now();
-        console.log(`[TIMING] SPEECH FINAL ${clientFinalAt}`);
-        await sendFragment(text, clientFinalAt);
+        await sendFragment(text, Date.now());
       } else {
         userSpeaking = true;
         interim += text;
@@ -308,24 +255,20 @@ function startRecognition() {
     }
     interimText.textContent = interim;
   };
-
   recognition.onerror = (event) => {
     if (ttsWaitingForMicStop && event.error === 'aborted') return;
     if (event.error === 'no-speech' || event.error === 'aborted') return;
     notice.textContent = `Microphone error: ${event.error}`;
     stopRecognition();
   };
-
   recognition.onend = () => {
     recognitionActive = false;
     userSpeaking = false;
-
     if (ttsWaitingForMicStop) {
       ttsWaitingForMicStop = false;
       setTimeout(startTtsNow, 50);
       return;
     }
-
     restartRecognition();
   };
 
@@ -339,10 +282,7 @@ function startRecognition() {
   recognition.start();
 }
 
-micButton.addEventListener('click', () => {
-  if (listening) stopRecognition();
-  else startRecognition();
-});
+micButton.addEventListener('click', () => listening ? stopRecognition() : startRecognition());
 
 voiceOutput.addEventListener('change', () => {
   if (voiceOutput.value === 'off') {
@@ -350,10 +290,46 @@ voiceOutput.addEventListener('change', () => {
     notice.textContent = 'Voice output is off.';
     restartRecognition();
   } else {
-    notice.textContent = isSmartStyle()
-      ? 'Voice output waits for Editor verification.'
-      : 'Voice output starts after Translator Agent finishes.';
+    notice.textContent = isSmartStyle() ? 'Voice output waits for Editor verification.' : 'Voice output starts after Translator Agent finishes.';
     requestTts();
+  }
+});
+
+saveVoiceButton.addEventListener('click', async () => {
+  const text = currentOutputText();
+  if (!text) return;
+  const previousLabel = saveVoiceButton.textContent;
+  saveVoiceButton.disabled = true;
+  saveVoiceButton.textContent = 'Generating…';
+  notice.textContent = 'Generating AI voice file…';
+  try {
+    const response = await fetch('/api/save-voice', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.error || `HTTP ${response.status}`);
+    }
+    const blob = await response.blob();
+    const disposition = response.headers.get('content-disposition') || '';
+    const match = disposition.match(/filename=([^;]+)/i);
+    const filename = match?.[1]?.replace(/["']/g, '') || 'translator-output.mp3';
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    notice.textContent = 'AI voice output saved as MP3.';
+  } catch (error) {
+    notice.textContent = `Could not save voice: ${error.message}`;
+  } finally {
+    saveVoiceButton.textContent = previousLabel;
+    saveVoiceButton.disabled = !currentOutputText();
   }
 });
 
@@ -363,11 +339,7 @@ async function updateConfig() {
   try {
     const state = await api('/api/config', {
       method: 'POST',
-      body: JSON.stringify({
-        sourceLanguage: sourceLanguage.value,
-        targetLanguage: targetLanguage.value,
-        outputStyle: outputStyle.value,
-      }),
+      body: JSON.stringify({ sourceLanguage: sourceLanguage.value, targetLanguage: targetLanguage.value, outputStyle: outputStyle.value }),
     });
     lastSpokenFragmentId = Math.max(0, ...(state.fragments || []).map((f) => f.id || 0));
     uiRenderedAt.clear();
@@ -390,24 +362,18 @@ clearButton.addEventListener('click', async () => {
   try {
     const state = await api('/api/clear', {
       method: 'POST',
-      body: JSON.stringify({
-        sourceLanguage: sourceLanguage.value,
-        targetLanguage: targetLanguage.value,
-        outputStyle: outputStyle.value,
-      }),
+      body: JSON.stringify({ sourceLanguage: sourceLanguage.value, targetLanguage: targetLanguage.value, outputStyle: outputStyle.value }),
     });
     lastSpokenFragmentId = 0;
     uiRenderedAt.clear();
     voiceStartedAt.clear();
     render(state);
     notice.textContent = 'Session cleared.';
-  } catch (error) {
-    notice.textContent = error.message;
-  }
+  } catch (error) { notice.textContent = error.message; }
 });
 
 copyButton.addEventListener('click', async () => {
-  const text = (stateCache?.fragments || []).map((f) => visibleTranslation(f)).filter(Boolean).join(' ');
+  const text = currentOutputText();
   if (!text) return;
   await navigator.clipboard.writeText(text);
   notice.textContent = 'Translation copied.';
