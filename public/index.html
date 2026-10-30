@@ -12,7 +12,7 @@
       <div>
         <div class="eyebrow">Mozaik Freestyle 2026</div>
         <h1>Live Multi-Agent Translator</h1>
-        <p>Speak in English, Serbian, Ukrainian or Russian. One agent receives the speech fragment, one translates it, and one polishes the result.</p>
+        <p>Speak in English, Serbian, Ukrainian or Russian. One agent cleans the source speech, one translates it, and one polishes the result.</p>
       </div>
       <button id="micButton" class="mic" type="button">🎙 Start microphone</button>
     </header>
@@ -36,11 +36,18 @@
           <option value="ru">Russian</option>
         </select>
       </label>
+      <label>
+        Voice output
+        <select id="voiceOutput">
+          <option value="auto" selected>Auto</option>
+          <option value="off">Off</option>
+        </select>
+      </label>
       <button id="clearButton" class="secondary" type="button">Clear</button>
     </section>
 
     <section class="agentbar">
-      <div class="agent"><span id="inputDot" class="dot idle"></span><strong>Input Agent</strong><span id="inputStatus">idle</span></div>
+      <div class="agent"><span id="inputDot" class="dot idle"></span><strong>Source Agent</strong><span id="inputStatus">idle</span></div>
       <div class="agent"><span id="translatorDot" class="dot idle"></span><strong>Translator Agent</strong><span id="translatorStatus">idle</span></div>
       <div class="agent"><span id="editorDot" class="dot idle"></span><strong>Editor Agent</strong><span id="editorStatus">idle</span></div>
     </section>
