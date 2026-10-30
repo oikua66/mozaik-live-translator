@@ -33,6 +33,16 @@ function delta(fragment) {
   return Date.now() - (fragment.clientFinalAt || fragment.serverReceivedAt || fragment.createdAt);
 }
 
+function styleInstruction(style) {
+  if (style === "polite") {
+    return "Render the speaker's intended message in a polite, clean, natural form. The speaker may talk casually, abruptly, use fillers, profanity, rough wording, fragments, or self-corrections; preserve the factual intent but remove unnecessary roughness, profanity, filler, and speech clutter. Do not make the message excessively formal or add facts, apologies, promises, or reasons that were not stated.";
+  }
+  if (style === "business") {
+    return "Render the intended message as concise professional business communication. Preserve all factual meaning, names, dates, numbers, requests, and commitments, while removing filler, profanity, rough phrasing, repetition, and casual speech clutter. Do not invent facts or make commitments stronger than the speaker did.";
+  }
+  return "Translate faithfully and naturally. Preserve the speaker's intended tone and level of formality while removing only obvious accidental speech noise and self-corrections when the intended wording is clear.";
+}
+
 function startNextSource(agent) {
   const state = resolveRuntime().state;
   if (state.sourceBusy || state.sourceQueue.length === 0) return;
@@ -49,7 +59,7 @@ function startNextSource(agent) {
 
   runLoop(
     agent.getId(),
-    `Clean this ${state.sourceLanguage} speech transcript for meaning-preserving downstream translation. Restore punctuation and normal capitalization. Also remove only obvious speech noise such as accidental repetitions, false starts, duplicated words, and immediate self-corrections when the intended wording is clear from context. Keep meaningful hesitations or ambiguity if the intended wording is not clear. Do not translate, embellish, summarize, or change the intended meaning. Return only the cleaned transcript:\n\n${fragment.rawSourceText}`,
+    `Clean this ${state.sourceLanguage} speech transcript for meaning-preserving downstream translation. Restore punctuation and normal capitalization. Also remove only obvious speech noise such as accidental repetitions, false starts, duplicated words, and immediate self-corrections when the intended wording is clear from context. Keep meaningful hesitation or ambiguity if the intended wording is not clear. Do not translate, embellish, summarize, or change the intended meaning. Return only the cleaned transcript:\n\n${fragment.rawSourceText}`,
     inferenceInput(agent),
   );
 }
@@ -71,7 +81,7 @@ function startNextTranslation(agent) {
 
   runLoop(
     agent.getId(),
-    `Translate this ${state.sourceLanguage} speech transcript into ${state.targetLanguage}. Preserve the speaker's intended meaning and tone, but silently resolve obvious accidental repetitions, false starts, duplicated words, and immediate self-corrections when the intended wording is clear. Do not preserve speech-recognition noise as if it were meaningful content. If a correction is ambiguous, preserve the ambiguity rather than guessing. Return only the natural translation with no commentary:\n\n${fragment.rawSourceText}`,
+    `Translate this ${state.sourceLanguage} speech transcript into ${state.targetLanguage}. ${styleInstruction(state.outputStyle)} Silently resolve obvious accidental repetitions, false starts, duplicated words, and immediate self-corrections when intent is clear. If a correction is ambiguous, preserve the ambiguity rather than guessing. Return only the target-language message with no commentary:\n\n${fragment.rawSourceText}`,
     inferenceInput(agent),
   );
 }
@@ -107,7 +117,7 @@ function startNextEdit(agent) {
 
     runLoop(
       agent.getId(),
-      `Read this ${state.sourceLanguage} speech fragment and prepare one very short editing brief for a later translator output. Identify tone/register and the intended meaning. Explicitly flag any obvious accidental repetition, false start, duplicated word, or immediate self-correction that should be cleaned rather than preserved. Do not translate the sentence. Return one concise line only:\n\n${fragment.rawSourceText}`,
+      `Read this ${state.sourceLanguage} speech fragment and prepare one very short editing brief for a later translator output. Desired output style: ${state.outputStyle}. Identify the intended meaning, facts that must be preserved, and tone/register. Flag obvious accidental repetition, false starts, duplicated words, self-corrections, filler, or unnecessarily rough wording that should be cleaned. Do not translate the sentence. Return one concise line only:\n\n${fragment.rawSourceText}`,
       inferenceInput(agent),
     );
     return;
@@ -125,7 +135,7 @@ function startNextEdit(agent) {
 
   runLoop(
     agent.getId(),
-    `Review the translation conservatively. If it is already natural, accurate, and appropriate for the intended register, return it unchanged. Correct real problems only: mistranslation, awkward phrasing, wrong register, grammar, punctuation, lost meaning, or speech noise that survived translation. Remove obvious accidental repetitions, false starts, duplicated words, and immediate self-corrections when the intended wording is clear. Do not invent content and do not replace natural wording merely with stylistic alternatives. Return only the final translation, with no commentary.\n\nEditing brief: ${fragment.styleBrief || "Preserve tone and meaning; clean obvious speech slips."}\n\nPrevious context: ${previous || "(none)"}\n\nCleaned source transcript if available: ${fragment.sourceText || fragment.rawSourceText}\n\nTranslation: ${fragment.rawTranslation}`,
+    `Review the translation against the source intent and desired output style. ${styleInstruction(state.outputStyle)} If the translation already satisfies those requirements, return it unchanged. Correct real problems only: mistranslation, awkward phrasing, wrong register, grammar, punctuation, lost meaning, unnecessary roughness, or speech noise that survived translation. Do not invent content. Return only the final target-language message, with no commentary.\n\nEditing brief: ${fragment.styleBrief || "Preserve intent and apply the selected output style."}\n\nPrevious context: ${previous || "(none)"}\n\nCleaned source transcript if available: ${fragment.sourceText || fragment.rawSourceText}\n\nTranslation: ${fragment.rawTranslation}`,
     inferenceInput(agent),
   );
 }
@@ -207,7 +217,7 @@ export const inputAgent = createAgent({
 export const translatorAgent = createAgent({
   name: "Translator Agent",
   capabilities: ["inference"],
-  instruction: "You are a fast professional translator. Preserve intended meaning and tone, while ignoring obvious accidental speech slips when intent is clear. Output only the translation.",
+  instruction: "You are a fast professional translator. Preserve factual intent and apply the selected output style without inventing content.",
   tools: [],
   handlers: [
     {
@@ -251,7 +261,7 @@ export const translatorAgent = createAgent({
 export const editorAgent = createAgent({
   name: "Editor Agent",
   capabilities: ["inference"],
-  instruction: "You coordinate intent/style analysis and conservative final polishing. Preserve good translations, but remove obvious speech slips when the intended wording is clear.",
+  instruction: "You coordinate intent/style analysis and conservative final polishing. Apply the selected output style while preserving facts and speaker intent.",
   tools: [],
   handlers: [
     {
