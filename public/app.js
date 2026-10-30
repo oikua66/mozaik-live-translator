@@ -63,15 +63,19 @@ function pickVoice(lang) {
   return voices.find((voice) => voice.lang?.toLowerCase().startsWith(prefix)) || null;
 }
 
+function visibleTranslation(fragment) {
+  return fragment.finalText || fragment.rawTranslation || '';
+}
+
 function pendingSpeakableBatch() {
   const fragments = (stateCache?.fragments || [])
-    .filter((fragment) => fragment.id > lastSpokenFragmentId && fragment.finalText)
+    .filter((fragment) => fragment.id > lastSpokenFragmentId && visibleTranslation(fragment))
     .sort((a, b) => a.id - b.id);
 
   if (!fragments.length) return null;
 
   return {
-    text: fragments.map((fragment) => fragment.finalText).join(' '),
+    text: fragments.map((fragment) => visibleTranslation(fragment)).join(' '),
     lastId: fragments[fragments.length - 1].id,
   };
 }
@@ -102,7 +106,7 @@ function startTtsNow() {
   utterance.onstart = () => {
     lastSpokenFragmentId = batch.lastId;
     listeningBadge.textContent = 'Speaking';
-    notice.textContent = 'Speaking translation. Microphone is paused.';
+    notice.textContent = 'Speaking translation. Editor continues polishing in the background.';
   };
 
   utterance.onend = () => {
@@ -118,7 +122,6 @@ function startTtsNow() {
     restartRecognition();
   };
 
-  // Chrome/macOS can stall if speak() follows cancel() in the same tick.
   speechSynthesisApi.cancel();
   setTimeout(() => {
     if (!ttsPlaying) return;
@@ -150,12 +153,12 @@ function render(state) {
   const fragments = state.fragments || [];
 
   const source = fragments.map((f) => f.sourceText).filter(Boolean).join(' ');
-  const final = fragments.map((f) => f.finalText || '').filter(Boolean).join(' ');
+  const translated = fragments.map((f) => visibleTranslation(f)).filter(Boolean).join(' ');
 
   originalText.textContent = source || 'Your speech will appear here.';
-  translatedText.textContent = final || 'The polished translation will appear here.';
+  translatedText.textContent = translated || 'The translation will appear here.';
   originalText.classList.toggle('empty', !source);
-  translatedText.classList.toggle('empty', !final);
+  translatedText.classList.toggle('empty', !translated);
 
   setStatus(
     inputStatus,
@@ -274,7 +277,7 @@ function startRecognition() {
   listening = true;
   micButton.textContent = '■ Stop microphone';
   listeningBadge.textContent = 'Listening';
-  notice.textContent = 'Speak naturally. Translation and source cleanup run in parallel.';
+  notice.textContent = 'Speak naturally. Translation appears as soon as Translator Agent finishes; Editor polishes it in the background.';
   render(stateCache || { fragments: [] });
   recognition.start();
 }
@@ -290,7 +293,7 @@ voiceOutput.addEventListener('change', () => {
     notice.textContent = 'Voice output is off.';
     restartRecognition();
   } else {
-    notice.textContent = 'Voice output is automatic after each completed translation.';
+    notice.textContent = 'Voice output starts as soon as the Translator Agent finishes.';
     requestTts();
   }
 });
@@ -332,11 +335,11 @@ clearButton.addEventListener('click', async () => {
 });
 
 copyButton.addEventListener('click', async () => {
-  const text = (stateCache?.fragments || []).map((f) => f.finalText || '').filter(Boolean).join(' ');
+  const text = (stateCache?.fragments || []).map((f) => visibleTranslation(f)).filter(Boolean).join(' ');
   if (!text) return;
   await navigator.clipboard.writeText(text);
   notice.textContent = 'Translation copied.';
 });
 
 await refresh();
-setInterval(refresh, 350);
+setInterval(refresh, 250);
