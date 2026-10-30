@@ -71,6 +71,32 @@ function resetState({ sourceLanguage, targetLanguage, outputStyle }) {
   return true;
 }
 
+async function createSpeech(text) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error("OPENAI_API_KEY is not set");
+
+  const response = await fetch("https://api.openai.com/v1/audio/speech", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${apiKey}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini-tts-2025-12-15",
+      voice: "marin",
+      input: text,
+      response_format: "mp3",
+    }),
+  });
+
+  if (!response.ok) {
+    const details = await response.text();
+    throw new Error(`TTS API ${response.status}: ${details.slice(0, 300)}`);
+  }
+
+  return Buffer.from(await response.arrayBuffer());
+}
+
 async function serveStatic(req, res) {
   const path = req.url === "/" ? "/index.html" : req.url;
   const safePath = path.split("?")[0].replace(/\.\./g, "");
@@ -121,6 +147,23 @@ const server = http.createServer(async (req, res) => {
       });
       sendEvent(event, inputAgent.getId());
       return json(res, 202, { id });
+    }
+
+    if (req.method === "POST" && req.url === "/api/save-voice") {
+      const body = await readJson(req);
+      const text = String(body.text || "").trim();
+      if (!text) return json(res, 400, { error: "No output text to save." });
+      if (text.length > 4096) return json(res, 400, { error: "Output is too long for one audio file." });
+
+      const audio = await createSpeech(text);
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+      res.writeHead(200, {
+        "content-type": "audio/mpeg",
+        "content-disposition": `attachment; filename=translator-output-${stamp}.mp3`,
+        "content-length": audio.length,
+        "cache-control": "no-store",
+      });
+      return res.end(audio);
     }
 
     if (req.method === "POST" && req.url === "/api/clear") {
