@@ -10,12 +10,15 @@ export class TranslatorState extends RuntimeState {
     this.sourceQueue = [];
     this.translationQueue = [];
     this.editQueue = [];
+    this.voiceQueue = [];
     this.sourceBusy = false;
     this.translationBusy = false;
     this.editBusy = false;
+    this.voiceBusy = false;
     this.activeSourceFragmentId = null;
     this.activeTranslationFragmentId = null;
     this.activeEditTask = null;
+    this.activeVoiceTask = null;
   }
 
   createFragment(id, sourceText, timing = {}) {
@@ -26,8 +29,13 @@ export class TranslatorState extends RuntimeState {
       rawTranslation: null,
       finalText: null,
       styleBrief: null,
+      voicePlan: null,
+      spokenText: null,
       briefStatus: "pending",
+      voicePlanStatus: "pending",
+      voiceStatus: "pending",
       polishQueued: false,
+      voiceFinalQueued: false,
       sttStatus: "normalizing",
       translationStatus: "pending",
       editingStatus: "pending",
@@ -38,6 +46,8 @@ export class TranslatorState extends RuntimeState {
       translatedAt: null,
       briefedAt: null,
       completedAt: null,
+      voicePlannedAt: null,
+      voiceCompletedAt: null,
     };
     this.fragments.set(id, fragment);
     return fragment;
