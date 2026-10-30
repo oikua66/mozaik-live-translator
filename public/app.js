@@ -45,7 +45,11 @@ function render(state) {
   originalText.classList.toggle('empty', !source);
   translatedText.classList.toggle('empty', !final);
 
-  setStatus(inputStatus, inputDot, listening ? 'listening' : 'idle');
+  setStatus(
+    inputStatus,
+    inputDot,
+    state.sourceBusy ? 'running' : state.sourceQueueLength ? 'queued' : listening ? 'listening' : 'idle',
+  );
   setStatus(translatorStatus, translatorDot, state.translationBusy ? 'running' : state.translationQueueLength ? 'queued' : 'idle');
   setStatus(editorStatus, editorDot, state.editBusy ? 'running' : state.editQueueLength ? 'queued' : 'idle');
 
@@ -126,7 +130,7 @@ function startRecognition() {
   listening = true;
   micButton.textContent = '■ Stop microphone';
   listeningBadge.textContent = 'Listening';
-  notice.textContent = 'Speak naturally. Final speech fragments are sent into the Mozaik pipeline.';
+  notice.textContent = 'Speak naturally. The Source Agent restores punctuation before translation.';
   render(stateCache || { fragments: [] });
   recognition.start();
 }
