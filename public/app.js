@@ -8,6 +8,7 @@ const clearButton = document.querySelector('#clearButton');
 const copyButton = document.querySelector('#copyButton');
 const originalText = document.querySelector('#originalText');
 const translatedText = document.querySelector('#translatedText');
+const voiceScriptText = document.querySelector('#voiceScriptText');
 const interimText = document.querySelector('#interimText');
 const listeningBadge = document.querySelector('#listeningBadge');
 const notice = document.querySelector('#notice');
@@ -16,9 +17,11 @@ const latencyLine = document.querySelector('#latencyLine');
 const inputStatus = document.querySelector('#inputStatus');
 const translatorStatus = document.querySelector('#translatorStatus');
 const editorStatus = document.querySelector('#editorStatus');
+const voiceWriterStatus = document.querySelector('#voiceWriterStatus');
 const inputDot = document.querySelector('#inputDot');
 const translatorDot = document.querySelector('#translatorDot');
 const editorDot = document.querySelector('#editorDot');
+const voiceWriterDot = document.querySelector('#voiceWriterDot');
 
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 const speechSynthesisApi = window.speechSynthesis;
@@ -58,6 +61,10 @@ function currentOutputText() {
   return (stateCache?.fragments || []).map((f) => visibleTranslation(f)).filter(Boolean).join(' ');
 }
 
+function currentVoiceScriptText() {
+  return (stateCache?.fragments || []).map((f) => f.spokenText || '').filter(Boolean).join(' ');
+}
+
 function updateLatencyLine(fragments) {
   const candidates = fragments.filter((f) => f.rawTranslation && f.clientFinalAt);
   const latest = candidates[candidates.length - 1];
@@ -68,10 +75,11 @@ function updateLatencyLine(fragments) {
 
   const translatorMs = latest.translatedAt ? latest.translatedAt - latest.clientFinalAt : null;
   const editorMs = latest.completedAt ? latest.completedAt - latest.clientFinalAt : null;
+  const writerMs = latest.voiceCompletedAt ? latest.voiceCompletedAt - latest.clientFinalAt : null;
   const uiMs = uiRenderedAt.has(latest.id) ? uiRenderedAt.get(latest.id) - latest.clientFinalAt : null;
   const voiceMs = voiceStartedAt.has(latest.id) ? voiceStartedAt.get(latest.id) - latest.clientFinalAt : null;
   const verified = isSmartStyle() ? ` | Editor: ${formatLatency(editorMs)}` : '';
-  latencyLine.textContent = `Latency #${latest.id} — Translator: ${formatLatency(translatorMs)}${verified} | UI: ${formatLatency(uiMs)} | Voice: ${formatLatency(voiceMs)}`;
+  latencyLine.textContent = `Latency #${latest.id} — Translator: ${formatLatency(translatorMs)}${verified} | Voice Writer: ${formatLatency(writerMs)} | UI: ${formatLatency(uiMs)} | Voice: ${formatLatency(voiceMs)}`;
 }
 
 function cancelTts() {
@@ -90,11 +98,11 @@ function pickVoice(lang) {
 
 function pendingSpeakableBatch() {
   const fragments = (stateCache?.fragments || [])
-    .filter((fragment) => fragment.id > lastSpokenFragmentId && visibleTranslation(fragment))
+    .filter((fragment) => fragment.id > lastSpokenFragmentId && fragment.spokenText)
     .sort((a, b) => a.id - b.id);
   if (!fragments.length) return null;
   return {
-    text: fragments.map((fragment) => visibleTranslation(fragment)).join(' '),
+    text: fragments.map((fragment) => fragment.spokenText).join(' '),
     lastId: fragments[fragments.length - 1].id,
     fragmentIds: fragments.map((fragment) => fragment.id),
   };
@@ -127,7 +135,7 @@ function startTtsNow() {
     for (const id of batch.fragmentIds) if (!voiceStartedAt.has(id)) voiceStartedAt.set(id, startedAt);
     lastSpokenFragmentId = batch.lastId;
     listeningBadge.textContent = 'Speaking';
-    notice.textContent = isSmartStyle() ? 'Speaking editor-verified translation.' : 'Speaking fast faithful translation.';
+    notice.textContent = 'Speaking the Voice Writer script.';
     updateLatencyLine(stateCache?.fragments || []);
   };
 
@@ -172,6 +180,7 @@ function render(state) {
   const fragments = state.fragments || [];
   const source = fragments.map((f) => f.sourceText).filter(Boolean).join(' ');
   const translated = fragments.map((f) => visibleTranslation(f)).filter(Boolean).join(' ');
+  const voiceScript = fragments.map((f) => f.spokenText || '').filter(Boolean).join(' ');
 
   for (const fragment of fragments) {
     if (visibleTranslation(fragment) && !uiRenderedAt.has(fragment.id)) uiRenderedAt.set(fragment.id, Date.now());
@@ -179,13 +188,16 @@ function render(state) {
 
   originalText.textContent = source || 'Your speech will appear here.';
   translatedText.textContent = translated || (isSmartStyle() ? 'Waiting for the editor-verified translation…' : 'The translation will appear here.');
+  voiceScriptText.textContent = voiceScript || 'The spoken version will appear here after verification.';
   originalText.classList.toggle('empty', !source);
   translatedText.classList.toggle('empty', !translated);
-  saveVoiceButton.disabled = !translated;
+  voiceScriptText.classList.toggle('empty', !voiceScript);
+  saveVoiceButton.disabled = !voiceScript;
 
   setStatus(inputStatus, inputDot, state.sourceBusy ? 'running' : state.sourceQueueLength ? 'queued' : listening ? 'listening' : 'idle');
   setStatus(translatorStatus, translatorDot, state.translationBusy ? 'running' : state.translationQueueLength ? 'queued' : 'idle');
   setStatus(editorStatus, editorDot, state.editBusy ? 'running' : state.editQueueLength ? 'queued' : 'idle');
+  setStatus(voiceWriterStatus, voiceWriterDot, state.voiceBusy ? 'running' : state.voiceQueueLength ? 'queued' : 'idle');
 
   sourceLanguage.value = state.sourceLanguage || sourceLanguage.value;
   targetLanguage.value = state.targetLanguage || targetLanguage.value;
@@ -275,9 +287,7 @@ function startRecognition() {
   listening = true;
   micButton.textContent = '■ Stop microphone';
   listeningBadge.textContent = 'Listening';
-  notice.textContent = isSmartStyle()
-    ? `Speak naturally. ${outputStyle.options[outputStyle.selectedIndex].text} waits for Editor verification.`
-    : 'Speak naturally. Faithful mode uses the fastest translation path.';
+  notice.textContent = 'Speak naturally. Four agents start coordinated work; Voice Writer prepares a separate spoken version.';
   render(stateCache || { fragments: [] });
   recognition.start();
 }
@@ -290,18 +300,18 @@ voiceOutput.addEventListener('change', () => {
     notice.textContent = 'Voice output is off.';
     restartRecognition();
   } else {
-    notice.textContent = isSmartStyle() ? 'Voice output waits for Editor verification.' : 'Voice output starts after Translator Agent finishes.';
+    notice.textContent = 'Voice output waits for the Voice Writer script.';
     requestTts();
   }
 });
 
 saveVoiceButton.addEventListener('click', async () => {
-  const text = currentOutputText();
+  const text = currentVoiceScriptText();
   if (!text) return;
   const previousLabel = saveVoiceButton.textContent;
   saveVoiceButton.disabled = true;
   saveVoiceButton.textContent = 'Generating…';
-  notice.textContent = 'Generating AI voice file…';
+  notice.textContent = 'Generating MP3 from the Voice Writer script…';
   try {
     const response = await fetch('/api/save-voice', {
       method: 'POST',
@@ -315,7 +325,7 @@ saveVoiceButton.addEventListener('click', async () => {
     const blob = await response.blob();
     const disposition = response.headers.get('content-disposition') || '';
     const match = disposition.match(/filename=([^;]+)/i);
-    const filename = match?.[1]?.replace(/["']/g, '') || 'translator-output.mp3';
+    const filename = match?.[1]?.replace(/["']/g, '') || 'translator-voice.mp3';
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
@@ -324,12 +334,12 @@ saveVoiceButton.addEventListener('click', async () => {
     link.click();
     link.remove();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
-    notice.textContent = 'AI voice output saved as MP3.';
+    notice.textContent = 'Voice Writer output saved as MP3.';
   } catch (error) {
     notice.textContent = `Could not save voice: ${error.message}`;
   } finally {
     saveVoiceButton.textContent = previousLabel;
-    saveVoiceButton.disabled = !currentOutputText();
+    saveVoiceButton.disabled = !currentVoiceScriptText();
   }
 });
 
