@@ -125,7 +125,7 @@ function startNextEdit(agent) {
 
   runLoop(
     agent.getId(),
-    `Polish this translated fragment so it sounds natural in ${state.targetLanguage}. Preserve meaning. Return only the polished fragment.\n\nEditing brief: ${fragment.styleBrief || "Preserve tone and meaning."}\n\nPrevious context: ${previous || "(none)"}\n\nSource transcript: ${fragment.sourceText || fragment.rawSourceText}\n\nTranslation: ${fragment.rawTranslation}`,
+    `Review the translation conservatively. If it is already natural, accurate, and appropriate for the intended register, return it unchanged. Only edit when there is a real problem: mistranslation, awkward phrasing, wrong register, grammar, punctuation, or lost meaning. Do not replace natural wording merely with stylistic alternatives. Preserve greetings, level of formality, and the speaker's intent. Return only the final translation, with no commentary.\n\nEditing brief: ${fragment.styleBrief || "Preserve tone and meaning."}\n\nPrevious context: ${previous || "(none)"}\n\nSource transcript: ${fragment.sourceText || fragment.rawSourceText}\n\nTranslation: ${fragment.rawTranslation}`,
     inferenceInput(agent),
   );
 }
@@ -251,7 +251,7 @@ export const translatorAgent = createAgent({
 export const editorAgent = createAgent({
   name: "Editor Agent",
   capabilities: ["inference"],
-  instruction: "You coordinate style analysis and final language polishing without changing meaning.",
+  instruction: "You coordinate style analysis and conservative final polishing. Preserve good translations unchanged and only correct real problems.",
   tools: [],
   handlers: [
     {
