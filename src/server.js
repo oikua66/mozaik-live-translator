@@ -43,8 +43,10 @@ function snapshot() {
   return {
     sourceLanguage: state.sourceLanguage,
     targetLanguage: state.targetLanguage,
+    sourceBusy: state.sourceBusy,
     translationBusy: state.translationBusy,
     editBusy: state.editBusy,
+    sourceQueueLength: state.sourceQueue.length,
     translationQueueLength: state.translationQueue.length,
     editQueueLength: state.editQueue.length,
     fragments: [...state.fragments.values()].sort((a, b) => a.id - b.id),
@@ -53,12 +55,14 @@ function snapshot() {
 
 function resetState({ sourceLanguage, targetLanguage }) {
   const state = resolveRuntime().state;
-  if (state.translationBusy || state.editBusy) return false;
+  if (state.sourceBusy || state.translationBusy || state.editBusy) return false;
   state.sourceLanguage = sourceLanguage || state.sourceLanguage;
   state.targetLanguage = targetLanguage || state.targetLanguage;
   state.fragments.clear();
+  state.sourceQueue.length = 0;
   state.translationQueue.length = 0;
   state.editQueue.length = 0;
+  state.activeSourceFragmentId = null;
   state.activeTranslationFragmentId = null;
   state.activeEditFragmentId = null;
   nextFragmentId = 1;
@@ -87,7 +91,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && req.url === "/api/config") {
       const body = await readJson(req);
       const state = resolveRuntime().state;
-      if (state.translationBusy || state.editBusy) {
+      if (state.sourceBusy || state.translationBusy || state.editBusy) {
         return json(res, 409, { error: "Agents are busy. Stop speaking and wait before changing languages." });
       }
       state.sourceLanguage = body.sourceLanguage || state.sourceLanguage;
