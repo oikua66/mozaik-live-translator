@@ -1,6 +1,6 @@
 import http from "node:http";
 import { readFile } from "node:fs/promises";
-import { extname, join } from "node:path";
+import { extname, join as pathJoin } from "node:path";
 import { fileURLToPath } from "node:url";
 import { SemanticEvent } from "@mozaik-ai/core";
 import { initializeRuntime, join, resolveRuntime, sendEvent } from "./runtime.js";
@@ -69,7 +69,7 @@ async function serveStatic(req, res) {
   const path = req.url === "/" ? "/index.html" : req.url;
   const safePath = path.split("?")[0].replace(/\.\./g, "");
   try {
-    const data = await readFile(join(root, safePath));
+    const data = await readFile(pathJoin(root, safePath));
     res.writeHead(200, { "content-type": mime[extname(safePath)] || "application/octet-stream" });
     res.end(data);
   } catch {
