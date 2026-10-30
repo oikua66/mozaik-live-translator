@@ -30,11 +30,14 @@ export class TranslatorState extends RuntimeState {
       finalText: null,
       styleBrief: null,
       voicePlan: null,
+      voiceDraft: null,
       spokenText: null,
       briefStatus: "pending",
       voicePlanStatus: "pending",
+      voiceDraftStatus: "pending",
       voiceStatus: "pending",
       polishQueued: false,
+      voiceDraftQueued: false,
       voiceFinalQueued: false,
       sttStatus: "normalizing",
       translationStatus: "pending",
@@ -47,6 +50,7 @@ export class TranslatorState extends RuntimeState {
       briefedAt: null,
       completedAt: null,
       voicePlannedAt: null,
+      voiceDraftedAt: null,
       voiceCompletedAt: null,
     };
     this.fragments.set(id, fragment);
