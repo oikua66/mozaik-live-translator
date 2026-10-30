@@ -38,7 +38,7 @@ function styleInstruction(style) {
     return "Render the speaker's intended message in a polite, clean, natural form. The speaker may talk casually, abruptly, use fillers, profanity, rough wording, fragments, or self-corrections; preserve the factual intent but remove unnecessary roughness, profanity, filler, and speech clutter. Do not make the message excessively formal or add facts, apologies, promises, or reasons that were not stated.";
   }
   if (style === "business") {
-    return "Render the intended message as concise professional business communication. Preserve all factual meaning, names, dates, numbers, requests, and commitments, while removing filler, profanity, rough phrasing, repetition, and casual speech clutter. Do not invent facts or make commitments stronger than the speaker did.";
+    return "Rewrite the speaker's intended message as concise, professional business communication rather than mirroring the speaker's casual style. Preserve every factual point that matters: names, dates, times, numbers, requests, commitments, constraints, and decisions. Remove profanity, filler, slang, repetition, rough phrasing, and conversational clutter. Smooth awkward spoken logic into a coherent professional message when the intended meaning is clear, but never invent facts, excuses, apologies, promises, deadlines, or stronger commitments. Prefer clear business wording such as 'I'm tied up today' over literal casual phrasing such as 'I'm too busy to do anything today'. Keep the result compact and natural, not bureaucratic.";
   }
   return "Translate faithfully and naturally. Preserve the speaker's intended tone and level of formality while removing only obvious accidental speech noise and self-corrections when the intended wording is clear.";
 }
@@ -117,7 +117,7 @@ function startNextEdit(agent) {
 
     runLoop(
       agent.getId(),
-      `Read this ${state.sourceLanguage} speech fragment and prepare one very short editing brief for a later translator output. Desired output style: ${state.outputStyle}. Identify the intended meaning, facts that must be preserved, and tone/register. Flag obvious accidental repetition, false starts, duplicated words, self-corrections, filler, or unnecessarily rough wording that should be cleaned. Do not translate the sentence. Return one concise line only:\n\n${fragment.rawSourceText}`,
+      `Read this ${state.sourceLanguage} speech fragment and prepare one very short editing brief for a later translator output. Desired output style: ${state.outputStyle}. Identify the intended meaning, facts that must be preserved, and tone/register. For business style, focus on the professional intent rather than the speaker's casual phrasing: note what should be preserved as facts and what can be cleaned as slang, profanity, filler, roughness, repetition, or spoken clutter. Flag obvious accidental repetition, false starts, duplicated words, and self-corrections. Do not translate the sentence. Return one concise line only:\n\n${fragment.rawSourceText}`,
       inferenceInput(agent),
     );
     return;
@@ -135,7 +135,7 @@ function startNextEdit(agent) {
 
   runLoop(
     agent.getId(),
-    `Review the translation against the source intent and desired output style. ${styleInstruction(state.outputStyle)} If the translation already satisfies those requirements, return it unchanged. Correct real problems only: mistranslation, awkward phrasing, wrong register, grammar, punctuation, lost meaning, unnecessary roughness, or speech noise that survived translation. Do not invent content. Return only the final target-language message, with no commentary.\n\nEditing brief: ${fragment.styleBrief || "Preserve intent and apply the selected output style."}\n\nPrevious context: ${previous || "(none)"}\n\nCleaned source transcript if available: ${fragment.sourceText || fragment.rawSourceText}\n\nTranslation: ${fragment.rawTranslation}`,
+    `Review the translation against the source intent and desired output style. ${styleInstruction(state.outputStyle)} If the translation already satisfies those requirements, return it unchanged. Correct real problems only: mistranslation, awkward phrasing, wrong register, grammar, punctuation, lost meaning, unnecessary roughness, or speech noise that survived translation. In business mode, prefer a compact professional rewrite of the intended message over a literal rendering of casual spoken wording. Do not invent content. Return only the final target-language message, with no commentary.\n\nEditing brief: ${fragment.styleBrief || "Preserve intent and apply the selected output style."}\n\nPrevious context: ${previous || "(none)"}\n\nCleaned source transcript if available: ${fragment.sourceText || fragment.rawSourceText}\n\nTranslation: ${fragment.rawTranslation}`,
     inferenceInput(agent),
   );
 }
