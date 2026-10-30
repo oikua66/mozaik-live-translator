@@ -1,3 +1,4 @@
+import { SemanticEvent } from "@mozaik-ai/core";
 import { initializeRuntime, join, sendEvent } from "./runtime.js";
 import { TranslatorState } from "./runtime.js";
 import { inputAgent, translatorAgent, editorAgent } from "./agents.js";
@@ -22,7 +23,12 @@ console.log("Three role agents share one runtime. New source fragments arrive wh
 
 for (let i = 0; i < fragments.length; i += 1) {
   setTimeout(() => {
-    sendEvent("source.fragment", { id: i + 1, text: fragments[i] }, "demo-source");
+    const event = SemanticEvent.create(
+      "source.fragment",
+      inputAgent.getId(),
+      { id: i + 1, text: fragments[i] },
+    );
+    sendEvent(event, inputAgent.getId());
   }, i * 700);
 }
 
