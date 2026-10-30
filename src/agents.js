@@ -1,5 +1,6 @@
 import {
   createAgent,
+  SemanticEvent,
   SituationSpecification,
 } from "@mozaik-ai/core";
 import { resolveRuntime, runLoop, sendEvent } from "./runtime.js";
@@ -21,6 +22,11 @@ function inferenceInput(agent) {
     context: agent.getMemory().getContext(),
     tools: agent.getTools(),
   };
+}
+
+function publishCustomEvent(type, producer, payload) {
+  const event = SemanticEvent.create(type, producer.getId(), payload);
+  sendEvent(event, producer.getId());
 }
 
 function startNextTranslation(agent) {
@@ -109,7 +115,7 @@ export const inputAgent = createAgent({
           const { id, text } = event.payload;
           const fragment = state.createFragment(id, text);
           console.log(`🔵 Input READY #${id}: ${fragment.sourceText}`);
-          sendEvent("fragment.ready", { fragmentId: id }, inputAgent.getId());
+          publishCustomEvent("fragment.ready", inputAgent, { fragmentId: id });
         },
       },
     },
@@ -151,7 +157,7 @@ export const translatorAgent = createAgent({
 
           state.translationBusy = false;
           state.activeTranslationFragmentId = null;
-          sendEvent("translation.ready", { fragmentId }, translatorAgent.getId());
+          publishCustomEvent("translation.ready", translatorAgent, { fragmentId });
           startNextTranslation(translatorAgent);
         },
       },
@@ -194,7 +200,7 @@ export const editorAgent = createAgent({
 
           state.editBusy = false;
           state.activeEditFragmentId = null;
-          sendEvent("output.ready", { fragmentId }, editorAgent.getId());
+          publishCustomEvent("output.ready", editorAgent, { fragmentId });
           startNextEdit(editorAgent);
         },
       },
