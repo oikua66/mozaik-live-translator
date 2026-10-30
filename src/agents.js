@@ -76,30 +76,56 @@ function startNextTranslation(agent) {
   );
 }
 
+function queuePolish(fragmentId) {
+  const state = resolveRuntime().state;
+  const fragment = state.fragments.get(fragmentId);
+  if (!fragment || fragment.polishQueued || fragment.editingStatus === "done") return;
+  if (!fragment.rawTranslation || fragment.briefStatus !== "done") return;
+
+  fragment.polishQueued = true;
+  fragment.editingStatus = "queued";
+  state.editQueue.push({ fragmentId, phase: "polish" });
+  startNextEdit(editorAgent);
+}
+
 function startNextEdit(agent) {
   const state = resolveRuntime().state;
   if (state.editBusy || state.editQueue.length === 0) return;
 
-  const fragmentId = state.editQueue.shift();
+  const task = state.editQueue.shift();
+  const { fragmentId, phase } = task;
   const fragment = state.fragments.get(fragmentId);
   if (!fragment) return;
 
   state.editBusy = true;
-  state.activeEditFragmentId = fragmentId;
-  fragment.editingStatus = "running";
+  state.activeEditTask = task;
 
+  if (phase === "brief") {
+    fragment.briefStatus = "running";
+    console.log(`⏱ #${fragmentId} Editor BRIEF START +${delta(fragment)} ms`);
+    console.log(`🟣 Editor Agent BRIEF START #${fragmentId}`);
+
+    runLoop(
+      agent.getId(),
+      `Read this ${state.sourceLanguage} speech fragment and prepare a very short editing brief for a later translator output. Identify tone/register and any wording that must be preserved. Do not translate the sentence. Return one concise line only:\n\n${fragment.rawSourceText}`,
+      inferenceInput(agent),
+    );
+    return;
+  }
+
+  fragment.editingStatus = "running";
   const previous = [...state.fragments.values()]
     .filter((item) => item.id < fragmentId && item.finalText)
     .map((item) => item.finalText)
     .slice(-2)
     .join(" ");
 
-  console.log(`⏱ #${fragmentId} Editor START +${delta(fragment)} ms`);
-  console.log(`🟣 Editor START #${fragmentId}`);
+  console.log(`⏱ #${fragmentId} Editor POLISH START +${delta(fragment)} ms`);
+  console.log(`🟣 Editor Agent POLISH START #${fragmentId}`);
 
   runLoop(
     agent.getId(),
-    `Polish this translated fragment so it sounds natural in ${state.targetLanguage}. Preserve meaning. Return only the polished fragment.\n\nPrevious context: ${previous || "(none)"}\n\nSource transcript: ${fragment.sourceText || fragment.rawSourceText}\n\nTranslation: ${fragment.rawTranslation}`,
+    `Polish this translated fragment so it sounds natural in ${state.targetLanguage}. Preserve meaning. Return only the polished fragment.\n\nEditing brief: ${fragment.styleBrief || "Preserve tone and meaning."}\n\nPrevious context: ${previous || "(none)"}\n\nSource transcript: ${fragment.sourceText || fragment.rawSourceText}\n\nTranslation: ${fragment.rawTranslation}`,
     inferenceInput(agent),
   );
 }
@@ -225,16 +251,27 @@ export const translatorAgent = createAgent({
 export const editorAgent = createAgent({
   name: "Editor Agent",
   capabilities: ["inference"],
-  instruction: "You are a concise language editor. Make translated fragments natural and coherent without changing meaning.",
+  instruction: "You coordinate style analysis and final language polishing without changing meaning.",
   tools: [],
   handlers: [
+    {
+      specification: new FragmentCreatedSpecification(),
+      processor: {
+        apply({ event }) {
+          const state = resolveRuntime().state;
+          const fragment = state.fragments.get(event.payload.fragmentId);
+          if (!fragment) return;
+          fragment.briefStatus = "queued";
+          state.editQueue.push({ fragmentId: fragment.id, phase: "brief" });
+          startNextEdit(editorAgent);
+        },
+      },
+    },
     {
       specification: new TranslationReadySpecification(),
       processor: {
         apply({ event }) {
-          const state = resolveRuntime().state;
-          state.editQueue.push(event.payload.fragmentId);
-          startNextEdit(editorAgent);
+          queuePolish(event.payload.fragmentId);
         },
       },
     },
@@ -245,20 +282,35 @@ export const editorAgent = createAgent({
           if (event.producerId !== editorAgent.getId()) return;
 
           const state = resolveRuntime().state;
-          const fragmentId = state.activeEditFragmentId;
-          const fragment = state.fragments.get(fragmentId);
+          const task = state.activeEditTask;
+          if (!task) return;
+          const fragment = state.fragments.get(task.fragmentId);
           if (!fragment) return;
+
+          if (task.phase === "brief") {
+            fragment.styleBrief = answerText(event.payload.answer).trim();
+            fragment.briefStatus = "done";
+            fragment.briefedAt = Date.now();
+            console.log(`⏱ #${fragment.id} Editor BRIEF DONE +${delta(fragment)} ms`);
+            console.log(`✅ Editor Agent BRIEF DONE #${fragment.id}: ${fragment.styleBrief}`);
+
+            state.editBusy = false;
+            state.activeEditTask = null;
+            queuePolish(fragment.id);
+            startNextEdit(editorAgent);
+            return;
+          }
 
           fragment.finalText = answerText(event.payload.answer);
           fragment.editingStatus = "done";
           fragment.completedAt = Date.now();
 
-          console.log(`⏱ #${fragmentId} Editor DONE +${delta(fragment)} ms`);
-          console.log(`✅ Editor DONE #${fragmentId}: ${fragment.finalText}`);
+          console.log(`⏱ #${fragment.id} Editor POLISH DONE +${delta(fragment)} ms`);
+          console.log(`✅ Editor Agent POLISH DONE #${fragment.id}: ${fragment.finalText}`);
 
           state.editBusy = false;
-          state.activeEditFragmentId = null;
-          publishCustomEvent("output.ready", editorAgent, { fragmentId });
+          state.activeEditTask = null;
+          publishCustomEvent("output.ready", editorAgent, { fragmentId: fragment.id });
           startNextEdit(editorAgent);
         },
       },
