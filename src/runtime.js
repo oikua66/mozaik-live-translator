@@ -17,7 +17,7 @@ export class TranslatorState extends RuntimeState {
     this.activeEditFragmentId = null;
   }
 
-  createFragment(id, sourceText) {
+  createFragment(id, sourceText, timing = {}) {
     const fragment = {
       id,
       rawSourceText: sourceText,
@@ -27,6 +27,8 @@ export class TranslatorState extends RuntimeState {
       sttStatus: "normalizing",
       translationStatus: "pending",
       editingStatus: "pending",
+      clientFinalAt: timing.clientFinalAt || null,
+      serverReceivedAt: timing.serverReceivedAt || Date.now(),
       createdAt: Date.now(),
       normalizedAt: null,
       translatedAt: null,
