@@ -20,13 +20,13 @@ const editorDot = document.querySelector('#editorDot');
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 const speechSynthesisApi = window.speechSynthesis;
 let recognition = null;
+let recognitionActive = false;
 let listening = false;
 let userSpeaking = false;
 let ttsPlaying = false;
+let ttsWaitingForMicStop = false;
 let stateCache = null;
-let lastSpeechAt = 0;
 let lastSpokenFragmentId = 0;
-let ttsTimer = null;
 
 const recognitionLang = {
   ru: 'ru-RU',
@@ -48,10 +48,7 @@ function setStatus(el, dot, value) {
 }
 
 function cancelTts() {
-  if (ttsTimer) {
-    clearTimeout(ttsTimer);
-    ttsTimer = null;
-  }
+  ttsWaitingForMicStop = false;
   if (speechSynthesisApi?.speaking || speechSynthesisApi?.pending) {
     speechSynthesisApi.cancel();
   }
@@ -79,36 +76,21 @@ function pendingSpeakableBatch() {
   };
 }
 
-function restartRecognitionAfterTts() {
-  if (!listening || !recognition) return;
+function restartRecognition() {
+  if (!listening || !recognition || ttsPlaying || ttsWaitingForMicStop || recognitionActive) return;
   setTimeout(() => {
-    if (!listening || ttsPlaying) return;
+    if (!listening || ttsPlaying || ttsWaitingForMicStop || recognitionActive) return;
     try { recognition.start(); } catch {}
-  }, 120);
+  }, 100);
 }
 
-function speakPendingIfReady() {
-  if (!speechSynthesisApi || voiceOutput.value !== 'auto') return;
-  if (userSpeaking || ttsPlaying) return;
-
-  const silenceFor = Date.now() - lastSpeechAt;
-  if (silenceFor < 850) {
-    scheduleTts(850 - silenceFor + 50);
-    return;
-  }
-
+function startTtsNow() {
+  if (!speechSynthesisApi || voiceOutput.value !== 'auto' || ttsPlaying || userSpeaking) return;
   const batch = pendingSpeakableBatch();
   if (!batch) return;
 
   ttsPlaying = true;
-  userSpeaking = false;
-
-  // Half-duplex: stop recognition while the browser is speaking so it does not hear itself.
-  if (recognition && listening) {
-    try { recognition.stop(); } catch {}
-  }
-
-  speechSynthesisApi.cancel();
+  ttsWaitingForMicStop = false;
 
   const utterance = new SpeechSynthesisUtterance(batch.text);
   utterance.lang = speechLang[targetLanguage.value] || 'en-US';
@@ -120,34 +102,47 @@ function speakPendingIfReady() {
   utterance.onstart = () => {
     lastSpokenFragmentId = batch.lastId;
     listeningBadge.textContent = 'Speaking';
-    notice.textContent = 'Speaking translation. Microphone is paused until playback finishes.';
+    notice.textContent = 'Speaking translation. Microphone is paused.';
   };
 
   utterance.onend = () => {
     ttsPlaying = false;
     listeningBadge.textContent = listening ? 'Listening' : 'Ready';
-    notice.textContent = listening
-      ? 'Listening. Voice output waits for the next completed translation.'
-      : 'Voice output finished.';
-    restartRecognitionAfterTts();
-    scheduleTts(150);
+    notice.textContent = listening ? 'Listening.' : 'Voice output finished.';
+    restartRecognition();
+    requestTts();
   };
 
   utterance.onerror = () => {
     ttsPlaying = false;
-    restartRecognitionAfterTts();
+    restartRecognition();
   };
 
-  speechSynthesisApi.speak(utterance);
+  // Chrome/macOS can stall if speak() follows cancel() in the same tick.
+  speechSynthesisApi.cancel();
+  setTimeout(() => {
+    if (!ttsPlaying) return;
+    speechSynthesisApi.speak(utterance);
+  }, 60);
 }
 
-function scheduleTts(delay = 900) {
-  if (voiceOutput.value !== 'auto' || ttsPlaying) return;
-  if (ttsTimer) clearTimeout(ttsTimer);
-  ttsTimer = setTimeout(() => {
-    ttsTimer = null;
-    speakPendingIfReady();
-  }, delay);
+function requestTts() {
+  if (!speechSynthesisApi || voiceOutput.value !== 'auto' || ttsPlaying || ttsWaitingForMicStop || userSpeaking) return;
+  if (!pendingSpeakableBatch()) return;
+
+  if (recognitionActive && recognition) {
+    ttsWaitingForMicStop = true;
+    listeningBadge.textContent = 'Preparing voice';
+    try {
+      recognition.abort();
+      return;
+    } catch {
+      recognitionActive = false;
+      ttsWaitingForMicStop = false;
+    }
+  }
+
+  startTtsNow();
 }
 
 function render(state) {
@@ -173,7 +168,7 @@ function render(state) {
   sourceLanguage.value = state.sourceLanguage || sourceLanguage.value;
   targetLanguage.value = state.targetLanguage || targetLanguage.value;
 
-  if (pendingSpeakableBatch()) scheduleTts();
+  requestTts();
 }
 
 async function api(path, options = {}) {
@@ -197,7 +192,6 @@ async function refresh() {
 async function sendFragment(text) {
   const clean = text.trim();
   if (!clean) return;
-  lastSpeechAt = Date.now();
   await api('/api/fragment', { method: 'POST', body: JSON.stringify({ text: clean }) });
   interimText.textContent = '';
   await refresh();
@@ -206,9 +200,11 @@ async function sendFragment(text) {
 function stopRecognition() {
   listening = false;
   userSpeaking = false;
+  ttsWaitingForMicStop = false;
   if (recognition) {
-    try { recognition.stop(); } catch {}
+    try { recognition.abort(); } catch {}
   }
+  recognitionActive = false;
   cancelTts();
   micButton.textContent = '🎙 Start microphone';
   listeningBadge.textContent = 'Ready';
@@ -227,20 +223,17 @@ function startRecognition() {
   recognition.continuous = true;
   recognition.interimResults = true;
 
+  recognition.onstart = () => {
+    recognitionActive = true;
+  };
+
   recognition.onspeechstart = () => {
-    if (ttsPlaying) {
-      speechSynthesisApi?.cancel();
-      ttsPlaying = false;
-    }
     userSpeaking = true;
-    lastSpeechAt = Date.now();
     listeningBadge.textContent = 'Listening';
   };
 
   recognition.onspeechend = () => {
     userSpeaking = false;
-    lastSpeechAt = Date.now();
-    scheduleTts();
   };
 
   recognition.onresult = async (event) => {
@@ -249,11 +242,9 @@ function startRecognition() {
       const text = event.results[i][0].transcript;
       if (event.results[i].isFinal) {
         userSpeaking = false;
-        lastSpeechAt = Date.now();
         await sendFragment(text);
       } else {
         userSpeaking = true;
-        lastSpeechAt = Date.now();
         interim += text;
       }
     }
@@ -261,22 +252,29 @@ function startRecognition() {
   };
 
   recognition.onerror = (event) => {
-    if (ttsPlaying && (event.error === 'aborted' || event.error === 'no-speech')) return;
+    if (ttsWaitingForMicStop && event.error === 'aborted') return;
+    if (event.error === 'no-speech' || event.error === 'aborted') return;
     notice.textContent = `Microphone error: ${event.error}`;
-    if (event.error !== 'aborted' && event.error !== 'no-speech') stopRecognition();
+    stopRecognition();
   };
 
   recognition.onend = () => {
+    recognitionActive = false;
     userSpeaking = false;
-    if (listening && !ttsPlaying) {
-      try { recognition.start(); } catch {}
+
+    if (ttsWaitingForMicStop) {
+      ttsWaitingForMicStop = false;
+      setTimeout(startTtsNow, 50);
+      return;
     }
+
+    restartRecognition();
   };
 
   listening = true;
   micButton.textContent = '■ Stop microphone';
   listeningBadge.textContent = 'Listening';
-  notice.textContent = 'Speak naturally. Voice output pauses the microphone while speaking.';
+  notice.textContent = 'Speak naturally. Translation and source cleanup run in parallel.';
   render(stateCache || { fragments: [] });
   recognition.start();
 }
@@ -290,9 +288,10 @@ voiceOutput.addEventListener('change', () => {
   if (voiceOutput.value === 'off') {
     cancelTts();
     notice.textContent = 'Voice output is off.';
+    restartRecognition();
   } else {
-    notice.textContent = 'Voice output is automatic after a short pause.';
-    scheduleTts(150);
+    notice.textContent = 'Voice output is automatic after each completed translation.';
+    requestTts();
   }
 });
 
