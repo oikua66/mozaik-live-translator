@@ -64,7 +64,7 @@ function resetState({ sourceLanguage, targetLanguage }) {
   state.editQueue.length = 0;
   state.activeSourceFragmentId = null;
   state.activeTranslationFragmentId = null;
-  state.activeEditFragmentId = null;
+  state.activeEditTask = null;
   nextFragmentId = 1;
   return true;
 }
