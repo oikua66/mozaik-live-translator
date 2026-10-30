@@ -55,18 +55,30 @@ function formatLatency(ms) {
   return Number.isFinite(ms) ? `${(ms / 1000).toFixed(2)} s` : '—';
 }
 
+function isSmartStyle() {
+  return outputStyle.value !== 'faithful';
+}
+
+function visibleTranslation(fragment) {
+  // Faithful is the low-latency path. Smart styles wait for Editor reconciliation.
+  if (isSmartStyle()) return fragment.finalText || '';
+  return fragment.finalText || fragment.rawTranslation || '';
+}
+
 function updateLatencyLine(fragments) {
-  const translated = fragments.filter((f) => f.rawTranslation && f.clientFinalAt);
-  const latest = translated[translated.length - 1];
+  const candidates = fragments.filter((f) => f.rawTranslation && f.clientFinalAt);
+  const latest = candidates[candidates.length - 1];
   if (!latest) {
     latencyLine.textContent = 'Latency: waiting for speech…';
     return;
   }
 
   const translatorMs = latest.translatedAt ? latest.translatedAt - latest.clientFinalAt : null;
+  const editorMs = latest.completedAt ? latest.completedAt - latest.clientFinalAt : null;
   const uiMs = uiRenderedAt.has(latest.id) ? uiRenderedAt.get(latest.id) - latest.clientFinalAt : null;
   const voiceMs = voiceStartedAt.has(latest.id) ? voiceStartedAt.get(latest.id) - latest.clientFinalAt : null;
-  latencyLine.textContent = `Latency #${latest.id} — Translator: ${formatLatency(translatorMs)} | UI: ${formatLatency(uiMs)} | Voice: ${formatLatency(voiceMs)}`;
+  const verified = isSmartStyle() ? ` | Editor: ${formatLatency(editorMs)}` : '';
+  latencyLine.textContent = `Latency #${latest.id} — Translator: ${formatLatency(translatorMs)}${verified} | UI: ${formatLatency(uiMs)} | Voice: ${formatLatency(voiceMs)}`;
 }
 
 function cancelTts() {
@@ -83,10 +95,6 @@ function pickVoice(lang) {
   if (exact) return exact;
   const prefix = lang.split('-')[0].toLowerCase();
   return voices.find((voice) => voice.lang?.toLowerCase().startsWith(prefix)) || null;
-}
-
-function visibleTranslation(fragment) {
-  return fragment.finalText || fragment.rawTranslation || '';
 }
 
 function pendingSpeakableBatch() {
@@ -134,7 +142,9 @@ function startTtsNow() {
     }
     lastSpokenFragmentId = batch.lastId;
     listeningBadge.textContent = 'Speaking';
-    notice.textContent = 'Speaking translation. Editor continues polishing in the background.';
+    notice.textContent = isSmartStyle()
+      ? 'Speaking editor-verified translation.'
+      : 'Speaking fast faithful translation.';
     updateLatencyLine(stateCache?.fragments || []);
   };
 
@@ -185,14 +195,16 @@ function render(state) {
   const translated = fragments.map((f) => visibleTranslation(f)).filter(Boolean).join(' ');
 
   for (const fragment of fragments) {
-    if (fragment.rawTranslation && !uiRenderedAt.has(fragment.id)) {
+    if (visibleTranslation(fragment) && !uiRenderedAt.has(fragment.id)) {
       uiRenderedAt.set(fragment.id, Date.now());
       console.log(`[TIMING] UI RENDER #${fragment.id} ${uiRenderedAt.get(fragment.id)}`);
     }
   }
 
   originalText.textContent = source || 'Your speech will appear here.';
-  translatedText.textContent = translated || 'The translation will appear here.';
+  translatedText.textContent = translated || (isSmartStyle()
+    ? 'Waiting for the editor-verified translation…'
+    : 'The translation will appear here.');
   originalText.classList.toggle('empty', !source);
   translatedText.classList.toggle('empty', !translated);
 
@@ -320,7 +332,9 @@ function startRecognition() {
   listening = true;
   micButton.textContent = '■ Stop microphone';
   listeningBadge.textContent = 'Listening';
-  notice.textContent = `Speak naturally. Output style: ${outputStyle.options[outputStyle.selectedIndex].text}.`;
+  notice.textContent = isSmartStyle()
+    ? `Speak naturally. ${outputStyle.options[outputStyle.selectedIndex].text} waits for Editor verification.`
+    : 'Speak naturally. Faithful mode uses the fastest translation path.';
   render(stateCache || { fragments: [] });
   recognition.start();
 }
@@ -336,7 +350,9 @@ voiceOutput.addEventListener('change', () => {
     notice.textContent = 'Voice output is off.';
     restartRecognition();
   } else {
-    notice.textContent = 'Voice output starts as soon as the Translator Agent finishes.';
+    notice.textContent = isSmartStyle()
+      ? 'Voice output waits for Editor verification.'
+      : 'Voice output starts after Translator Agent finishes.';
     requestTts();
   }
 });
@@ -354,6 +370,8 @@ async function updateConfig() {
       }),
     });
     lastSpokenFragmentId = Math.max(0, ...(state.fragments || []).map((f) => f.id || 0));
+    uiRenderedAt.clear();
+    voiceStartedAt.clear();
     render(state);
     notice.textContent = `Settings updated. Output style: ${outputStyle.options[outputStyle.selectedIndex].text}.`;
   } catch (error) {
