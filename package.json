@@ -1,10 +1,11 @@
 {
   "name": "mozaik-live-translator",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": false,
   "type": "module",
   "scripts": {
-    "demo": "node src/demo.js"
+    "demo": "node src/demo.js",
+    "web": "node src/server.js"
   },
   "engines": {
     "node": ">=24"
