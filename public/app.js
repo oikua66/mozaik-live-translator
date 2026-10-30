@@ -22,6 +22,7 @@ const speechSynthesisApi = window.speechSynthesis;
 let recognition = null;
 let listening = false;
 let userSpeaking = false;
+let ttsPlaying = false;
 let stateCache = null;
 let lastSpeechAt = 0;
 let lastSpokenFragmentId = 0;
@@ -54,6 +55,7 @@ function cancelTts() {
   if (speechSynthesisApi?.speaking || speechSynthesisApi?.pending) {
     speechSynthesisApi.cancel();
   }
+  ttsPlaying = false;
 }
 
 function pickVoice(lang) {
@@ -64,53 +66,87 @@ function pickVoice(lang) {
   return voices.find((voice) => voice.lang?.toLowerCase().startsWith(prefix)) || null;
 }
 
-function nextSpeakableFragment() {
-  const fragments = stateCache?.fragments || [];
-  return fragments
+function pendingSpeakableBatch() {
+  const fragments = (stateCache?.fragments || [])
     .filter((fragment) => fragment.id > lastSpokenFragmentId && fragment.finalText)
-    .sort((a, b) => a.id - b.id)[0] || null;
+    .sort((a, b) => a.id - b.id);
+
+  if (!fragments.length) return null;
+
+  return {
+    text: fragments.map((fragment) => fragment.finalText).join(' '),
+    lastId: fragments[fragments.length - 1].id,
+  };
 }
 
-function speakNextIfReady() {
+function restartRecognitionAfterTts() {
+  if (!listening || !recognition) return;
+  setTimeout(() => {
+    if (!listening || ttsPlaying) return;
+    try { recognition.start(); } catch {}
+  }, 120);
+}
+
+function speakPendingIfReady() {
   if (!speechSynthesisApi || voiceOutput.value !== 'auto') return;
-  if (userSpeaking) return;
-  if (Date.now() - lastSpeechAt < 900) {
-    scheduleTts();
+  if (userSpeaking || ttsPlaying) return;
+
+  const silenceFor = Date.now() - lastSpeechAt;
+  if (silenceFor < 850) {
+    scheduleTts(850 - silenceFor + 50);
     return;
   }
-  if (speechSynthesisApi.speaking) return;
 
-  const fragment = nextSpeakableFragment();
-  if (!fragment) return;
+  const batch = pendingSpeakableBatch();
+  if (!batch) return;
 
-  const utterance = new SpeechSynthesisUtterance(fragment.finalText);
+  ttsPlaying = true;
+  userSpeaking = false;
+
+  // Half-duplex: stop recognition while the browser is speaking so it does not hear itself.
+  if (recognition && listening) {
+    try { recognition.stop(); } catch {}
+  }
+
+  speechSynthesisApi.cancel();
+
+  const utterance = new SpeechSynthesisUtterance(batch.text);
   utterance.lang = speechLang[targetLanguage.value] || 'en-US';
   const voice = pickVoice(utterance.lang);
   if (voice) utterance.voice = voice;
   utterance.rate = 1;
   utterance.pitch = 1;
 
-  lastSpokenFragmentId = fragment.id;
   utterance.onstart = () => {
-    notice.textContent = 'Voice output is speaking. Start talking to interrupt it.';
+    lastSpokenFragmentId = batch.lastId;
+    listeningBadge.textContent = 'Speaking';
+    notice.textContent = 'Speaking translation. Microphone is paused until playback finishes.';
   };
+
   utterance.onend = () => {
-    if (listening) notice.textContent = 'Listening. Voice output waits for a short pause.';
-    scheduleTts(200);
+    ttsPlaying = false;
+    listeningBadge.textContent = listening ? 'Listening' : 'Ready';
+    notice.textContent = listening
+      ? 'Listening. Voice output waits for the next completed translation.'
+      : 'Voice output finished.';
+    restartRecognitionAfterTts();
+    scheduleTts(150);
   };
+
   utterance.onerror = () => {
-    scheduleTts(300);
+    ttsPlaying = false;
+    restartRecognitionAfterTts();
   };
 
   speechSynthesisApi.speak(utterance);
 }
 
-function scheduleTts(delay = 950) {
-  if (voiceOutput.value !== 'auto') return;
+function scheduleTts(delay = 900) {
+  if (voiceOutput.value !== 'auto' || ttsPlaying) return;
   if (ttsTimer) clearTimeout(ttsTimer);
   ttsTimer = setTimeout(() => {
     ttsTimer = null;
-    speakNextIfReady();
+    speakPendingIfReady();
   }, delay);
 }
 
@@ -137,7 +173,7 @@ function render(state) {
   sourceLanguage.value = state.sourceLanguage || sourceLanguage.value;
   targetLanguage.value = state.targetLanguage || targetLanguage.value;
 
-  if (nextSpeakableFragment()) scheduleTts();
+  if (pendingSpeakableBatch()) scheduleTts();
 }
 
 async function api(path, options = {}) {
@@ -170,7 +206,9 @@ async function sendFragment(text) {
 function stopRecognition() {
   listening = false;
   userSpeaking = false;
-  if (recognition) recognition.stop();
+  if (recognition) {
+    try { recognition.stop(); } catch {}
+  }
   cancelTts();
   micButton.textContent = '🎙 Start microphone';
   listeningBadge.textContent = 'Ready';
@@ -190,9 +228,12 @@ function startRecognition() {
   recognition.interimResults = true;
 
   recognition.onspeechstart = () => {
+    if (ttsPlaying) {
+      speechSynthesisApi?.cancel();
+      ttsPlaying = false;
+    }
     userSpeaking = true;
     lastSpeechAt = Date.now();
-    cancelTts();
     listeningBadge.textContent = 'Listening';
   };
 
@@ -213,7 +254,6 @@ function startRecognition() {
       } else {
         userSpeaking = true;
         lastSpeechAt = Date.now();
-        cancelTts();
         interim += text;
       }
     }
@@ -221,13 +261,14 @@ function startRecognition() {
   };
 
   recognition.onerror = (event) => {
+    if (ttsPlaying && (event.error === 'aborted' || event.error === 'no-speech')) return;
     notice.textContent = `Microphone error: ${event.error}`;
-    stopRecognition();
+    if (event.error !== 'aborted' && event.error !== 'no-speech') stopRecognition();
   };
 
   recognition.onend = () => {
     userSpeaking = false;
-    if (listening) {
+    if (listening && !ttsPlaying) {
       try { recognition.start(); } catch {}
     }
   };
@@ -235,7 +276,7 @@ function startRecognition() {
   listening = true;
   micButton.textContent = '■ Stop microphone';
   listeningBadge.textContent = 'Listening';
-  notice.textContent = 'Speak naturally. Voice output waits for a short pause.';
+  notice.textContent = 'Speak naturally. Voice output pauses the microphone while speaking.';
   render(stateCache || { fragments: [] });
   recognition.start();
 }
@@ -251,7 +292,7 @@ voiceOutput.addEventListener('change', () => {
     notice.textContent = 'Voice output is off.';
   } else {
     notice.textContent = 'Voice output is automatic after a short pause.';
-    scheduleTts(200);
+    scheduleTts(150);
   }
 });
 
