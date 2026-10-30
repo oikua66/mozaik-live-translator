@@ -35,10 +35,10 @@ function delta(fragment) {
 
 function styleInstruction(style) {
   if (style === "polite") {
-    return "Render the speaker's intended message in a polite, clean, natural form. Remove unnecessary roughness, profanity, filler, and speech clutter, but never invent a subject, object, request, apology, promise, reason, deadline, responsibility, or other fact. If part of the source is ambiguous, use a conservative neutral formulation rather than guessing.";
+    return "Render the intended message in polite, clean, everyday spoken language. It should sound like a real person speaking naturally, not like a formal letter or bureaucratic translation. Prefer common conversational wording and contractions where natural. Avoid stiff phrases such as 'let us', 'carry out', 'therefore', or overly literary wording unless the source genuinely requires them. Remove profanity, filler, roughness, repetition, and speech clutter, but never invent facts, actors, requests, apologies, promises, reasons, deadlines, responsibilities, or commitments. If something is ambiguous, use a neutral formulation rather than guessing.";
   }
   if (style === "business") {
-    return "Rewrite the intended message as concise professional business communication. Preserve clearly stated names, dates, times, numbers, requests, commitments, constraints, and decisions. Remove profanity, filler, slang, repetition, rough phrasing, and conversational clutter. Never invent who must do something, what must be done, ownership, responsibility, promises, reasons, deadlines, or other facts. If a clause remains ambiguous, omit the uncertain detail or express only the unambiguous intent.";
+    return "Rewrite the intended message as concise, natural professional business communication. Preserve clearly stated names, dates, times, numbers, requests, commitments, constraints, and decisions. Remove profanity, filler, slang, repetition, rough phrasing, and conversational clutter. Keep it human and direct rather than bureaucratic. Never invent who must do something, what must be done, ownership, responsibility, promises, reasons, deadlines, or other facts. If a clause remains ambiguous, omit the uncertain detail or express only the unambiguous intent.";
   }
   return "Translate faithfully and naturally. Preserve the speaker's intended tone and formality while removing only obvious accidental speech noise and self-corrections when intent is clear. Never invent facts to resolve ambiguity.";
 }
@@ -133,14 +133,37 @@ function startNextEdit(agent) {
   );
 }
 
+function queueVoiceDraft(fragmentId) {
+  const state = resolveRuntime().state;
+  const fragment = state.fragments.get(fragmentId);
+  if (!fragment || fragment.voiceDraftQueued || fragment.voiceDraftStatus === "done") return;
+  if (!fragment.rawTranslation || fragment.voicePlanStatus !== "done") return;
+  fragment.voiceDraftQueued = true;
+  fragment.voiceDraftStatus = "queued";
+  state.voiceQueue.push({ fragmentId, phase: "draft" });
+  startNextVoice(voiceWriterAgent);
+}
+
 function queueVoiceFinal(fragmentId) {
   const state = resolveRuntime().state;
   const fragment = state.fragments.get(fragmentId);
   if (!fragment || fragment.voiceFinalQueued || fragment.voiceStatus === "done") return;
-  if (!fragment.finalText || fragment.voicePlanStatus !== "done") return;
+  if (!fragment.finalText || fragment.voiceDraftStatus !== "done") return;
+
+  // Fast path: if Editor did not change the translator text, the parallel voice draft is already valid.
+  if (fragment.finalText.trim() === fragment.rawTranslation.trim()) {
+    fragment.spokenText = fragment.voiceDraft || fragment.finalText;
+    fragment.voiceStatus = "done";
+    fragment.voiceCompletedAt = Date.now();
+    console.log(`⏱ #${fragment.id} Voice VERIFIED +${delta(fragment)} ms`);
+    console.log(`✅ Voice Writer VERIFIED #${fragment.id}: ${fragment.spokenText}`);
+    publishCustomEvent("voice.ready", voiceWriterAgent, { fragmentId: fragment.id });
+    return;
+  }
+
   fragment.voiceFinalQueued = true;
   fragment.voiceStatus = "queued";
-  state.voiceQueue.push({ fragmentId, phase: "script" });
+  state.voiceQueue.push({ fragmentId, phase: "verify" });
   startNextVoice(voiceWriterAgent);
 }
 
@@ -161,18 +184,30 @@ function startNextVoice(agent) {
     console.log(`🟢 Voice Writer PLAN START #${fragmentId}`);
     runLoop(
       agent.getId(),
-      `Prepare a very short spoken-delivery plan for this ${state.sourceLanguage} utterance that will later be translated into ${state.targetLanguage}. Desired output style: ${state.outputStyle}. Identify the intended spoken rhythm, what should sound natural aloud, and what filler or rough speech can be omitted. Preserve facts exactly and flag ambiguity; do not invent anything and do not translate yet. Return one concise line:\n\n${fragment.rawSourceText}`,
+      `Prepare one very short spoken-delivery plan for this ${state.sourceLanguage} utterance that will later be translated into ${state.targetLanguage}. Desired output style: ${state.outputStyle}. Focus on natural speech rhythm and what filler or roughness can be removed. Preserve facts and ambiguity exactly. Do not translate yet. Return one concise line:\n\n${fragment.rawSourceText}`,
+      inferenceInput(agent),
+    );
+    return;
+  }
+
+  if (phase === "draft") {
+    fragment.voiceDraftStatus = "running";
+    console.log(`⏱ #${fragmentId} Voice DRAFT START +${delta(fragment)} ms`);
+    console.log(`🟢 Voice Writer DRAFT START #${fragmentId}`);
+    runLoop(
+      agent.getId(),
+      `Turn this ${state.targetLanguage} translator draft into a natural spoken version for text-to-speech while Editor works in parallel. Keep all factual content unchanged. Use short, easy-to-hear sentences and ordinary spoken wording. ${state.outputStyle === "polite" ? "For Polite & clean, sound warm and conversational, never stiff, literary, or bureaucratic." : "Keep the selected register natural when spoken aloud."} Do not add facts, requests, promises, actors, reasons, or commitments. Return only the spoken draft.\n\nVoice plan: ${fragment.voicePlan || "Natural spoken delivery."}\n\nTranslator draft: ${fragment.rawTranslation}`,
       inferenceInput(agent),
     );
     return;
   }
 
   fragment.voiceStatus = "running";
-  console.log(`⏱ #${fragmentId} Voice SCRIPT START +${delta(fragment)} ms`);
-  console.log(`🟢 Voice Writer SCRIPT START #${fragmentId}`);
+  console.log(`⏱ #${fragmentId} Voice VERIFY START +${delta(fragment)} ms`);
+  console.log(`🟢 Voice Writer VERIFY START #${fragmentId}`);
   runLoop(
     agent.getId(),
-    `Create the spoken version of this verified ${state.targetLanguage} message for text-to-speech. Keep every factual meaning, name, date, time, number, request, commitment, and constraint unchanged. Make it natural to hear aloud: concise sentences, smooth rhythm, no bureaucratic wording, no markdown, no stage directions. Do not add or remove substantive information. Return only the spoken script.\n\nVoice plan: ${fragment.voicePlan || "Natural spoken delivery; preserve all facts."}\n\nVerified text: ${fragment.finalText}`,
+    `Quickly reconcile the existing spoken draft with the Editor-verified text. Change only what is necessary to match the verified facts and meaning. Keep the spoken version natural, concise, conversational, and easy to hear. Do not perform a fresh rewrite if the draft is already correct. Do not add or remove substantive information. Return only the corrected spoken script.\n\nSpoken draft: ${fragment.voiceDraft}\n\nVerified text: ${fragment.finalText}`,
     inferenceInput(agent),
   );
 }
@@ -334,6 +369,7 @@ export const editorAgent = createAgent({
           state.editBusy = false;
           state.activeEditTask = null;
           publishCustomEvent("output.ready", editorAgent, { fragmentId: fragment.id });
+          queueVoiceFinal(fragment.id);
           startNextEdit(editorAgent);
         },
       },
@@ -344,7 +380,7 @@ export const editorAgent = createAgent({
 export const voiceWriterAgent = createAgent({
   name: "Voice Writer Agent",
   capabilities: ["inference"],
-  instruction: "Prepare natural spoken scripts for TTS while preserving every verified fact.",
+  instruction: "Prepare natural spoken scripts for TTS in parallel with factual editing, then reconcile only when necessary.",
   tools: [],
   handlers: [
     {
@@ -359,6 +395,10 @@ export const voiceWriterAgent = createAgent({
           startNextVoice(voiceWriterAgent);
         },
       },
+    },
+    {
+      specification: new TranslationReadySpecification(),
+      processor: { apply({ event }) { queueVoiceDraft(event.payload.fragmentId); } },
     },
     {
       specification: new OutputReadySpecification(),
@@ -383,6 +423,19 @@ export const voiceWriterAgent = createAgent({
             console.log(`✅ Voice Writer PLAN DONE #${fragment.id}: ${fragment.voicePlan}`);
             state.voiceBusy = false;
             state.activeVoiceTask = null;
+            queueVoiceDraft(fragment.id);
+            startNextVoice(voiceWriterAgent);
+            return;
+          }
+
+          if (task.phase === "draft") {
+            fragment.voiceDraft = answerText(event.payload.answer).trim() || fragment.rawTranslation;
+            fragment.voiceDraftStatus = "done";
+            fragment.voiceDraftedAt = Date.now();
+            console.log(`⏱ #${fragment.id} Voice DRAFT DONE +${delta(fragment)} ms`);
+            console.log(`✅ Voice Writer DRAFT DONE #${fragment.id}: ${fragment.voiceDraft}`);
+            state.voiceBusy = false;
+            state.activeVoiceTask = null;
             queueVoiceFinal(fragment.id);
             startNextVoice(voiceWriterAgent);
             return;
@@ -391,8 +444,8 @@ export const voiceWriterAgent = createAgent({
           fragment.spokenText = answerText(event.payload.answer).trim() || fragment.finalText;
           fragment.voiceStatus = "done";
           fragment.voiceCompletedAt = Date.now();
-          console.log(`⏱ #${fragment.id} Voice SCRIPT DONE +${delta(fragment)} ms`);
-          console.log(`✅ Voice Writer SCRIPT DONE #${fragment.id}: ${fragment.spokenText}`);
+          console.log(`⏱ #${fragment.id} Voice VERIFY DONE +${delta(fragment)} ms`);
+          console.log(`✅ Voice Writer VERIFY DONE #${fragment.id}: ${fragment.spokenText}`);
           state.voiceBusy = false;
           state.activeVoiceTask = null;
           publishCustomEvent("voice.ready", voiceWriterAgent, { fragmentId: fragment.id });
