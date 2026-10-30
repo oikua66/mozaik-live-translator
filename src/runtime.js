@@ -14,7 +14,7 @@ export class TranslatorState extends RuntimeState {
     this.editBusy = false;
     this.activeSourceFragmentId = null;
     this.activeTranslationFragmentId = null;
-    this.activeEditFragmentId = null;
+    this.activeEditTask = null;
   }
 
   createFragment(id, sourceText, timing = {}) {
@@ -24,6 +24,9 @@ export class TranslatorState extends RuntimeState {
       sourceText,
       rawTranslation: null,
       finalText: null,
+      styleBrief: null,
+      briefStatus: "pending",
+      polishQueued: false,
       sttStatus: "normalizing",
       translationStatus: "pending",
       editingStatus: "pending",
@@ -32,6 +35,7 @@ export class TranslatorState extends RuntimeState {
       createdAt: Date.now(),
       normalizedAt: null,
       translatedAt: null,
+      briefedAt: null,
       completedAt: null,
     };
     this.fragments.set(id, fragment);
