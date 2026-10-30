@@ -35,31 +35,29 @@ function delta(fragment) {
 
 function styleInstruction(style) {
   if (style === "polite") {
-    return "Render the speaker's intended message in a polite, clean, natural form. The speaker may talk casually, abruptly, use fillers, profanity, rough wording, fragments, or self-corrections; preserve the factual intent but remove unnecessary roughness, profanity, filler, and speech clutter. Do not make the message excessively formal. Never invent a subject, object, request, apology, promise, reason, deadline, responsibility, or other fact that the speaker did not clearly state. If part of the source is ambiguous, use a conservative neutral formulation rather than guessing.";
+    return "Render the speaker's intended message in a polite, clean, natural form. Remove unnecessary roughness, profanity, filler, and speech clutter, but never invent a subject, object, request, apology, promise, reason, deadline, responsibility, or other fact. If part of the source is ambiguous, use a conservative neutral formulation rather than guessing.";
   }
   if (style === "business") {
-    return "Rewrite the speaker's intended message as concise, professional business communication rather than mirroring casual speech. Preserve every clearly stated factual point: names, dates, times, numbers, requests, commitments, constraints, and decisions. Remove profanity, filler, slang, repetition, rough phrasing, and conversational clutter. Never invent who must do something, what must be done, ownership, responsibility, promises, reasons, deadlines, or any other fact not clearly present in the source. If a clause is ambiguous after speech cleanup, omit the uncertain detail or express only the unambiguous intent; never guess. Keep the result compact, natural, and professional, not bureaucratic.";
+    return "Rewrite the intended message as concise professional business communication. Preserve clearly stated names, dates, times, numbers, requests, commitments, constraints, and decisions. Remove profanity, filler, slang, repetition, rough phrasing, and conversational clutter. Never invent who must do something, what must be done, ownership, responsibility, promises, reasons, deadlines, or other facts. If a clause remains ambiguous, omit the uncertain detail or express only the unambiguous intent.";
   }
-  return "Translate faithfully and naturally. Preserve the speaker's intended tone and level of formality while removing only obvious accidental speech noise and self-corrections when the intended wording is clear. Never invent facts to resolve ambiguity.";
+  return "Translate faithfully and naturally. Preserve the speaker's intended tone and formality while removing only obvious accidental speech noise and self-corrections when intent is clear. Never invent facts to resolve ambiguity.";
 }
 
 function startNextSource(agent) {
   const state = resolveRuntime().state;
   if (state.sourceBusy || state.sourceQueue.length === 0) return;
-
   const fragmentId = state.sourceQueue.shift();
   const fragment = state.fragments.get(fragmentId);
   if (!fragment) return;
 
   state.sourceBusy = true;
   state.activeSourceFragmentId = fragmentId;
-
   console.log(`⏱ #${fragmentId} Source START +${delta(fragment)} ms`);
   console.log(`🔵 Source Agent START #${fragmentId}: ${fragment.rawSourceText}`);
 
   runLoop(
     agent.getId(),
-    `Clean this ${state.sourceLanguage} speech transcript for meaning-preserving downstream translation. Restore punctuation and normal capitalization. Remove only obvious speech noise such as accidental repetitions, false starts, duplicated words, and immediate self-corrections when the intended wording is clear from context. If a phrase remains genuinely ambiguous, preserve that ambiguity instead of inventing a subject, object, action, or responsibility. Do not translate, embellish, summarize, or change the intended meaning. Return only the cleaned transcript:\n\n${fragment.rawSourceText}`,
+    `Clean this ${state.sourceLanguage} speech transcript for meaning-preserving downstream translation. Restore punctuation and capitalization. Remove obvious repetitions, false starts, duplicated words, and immediate self-corrections only when the intended wording is clear. Preserve genuine ambiguity rather than inventing meaning. Do not translate or embellish. Return only the cleaned transcript:\n\n${fragment.rawSourceText}`,
     inferenceInput(agent),
   );
 }
@@ -67,7 +65,6 @@ function startNextSource(agent) {
 function startNextTranslation(agent) {
   const state = resolveRuntime().state;
   if (state.translationBusy || state.translationQueue.length === 0) return;
-
   const fragmentId = state.translationQueue.shift();
   const fragment = state.fragments.get(fragmentId);
   if (!fragment) return;
@@ -75,13 +72,12 @@ function startNextTranslation(agent) {
   state.translationBusy = true;
   state.activeTranslationFragmentId = fragmentId;
   fragment.translationStatus = "running";
-
   console.log(`⏱ #${fragmentId} Translator START +${delta(fragment)} ms`);
   console.log(`🟠 Translator START #${fragmentId}: ${fragment.rawSourceText}`);
 
   runLoop(
     agent.getId(),
-    `Translate this ${state.sourceLanguage} speech transcript into ${state.targetLanguage}. ${styleInstruction(state.outputStyle)} Silently resolve obvious accidental repetitions, false starts, duplicated words, and immediate self-corrections only when intent is clear. Do not infer a new actor, object, task, responsibility, or commitment from broken speech. Return only the target-language message with no commentary:\n\n${fragment.rawSourceText}`,
+    `Translate this ${state.sourceLanguage} speech transcript into ${state.targetLanguage}. ${styleInstruction(state.outputStyle)} Resolve obvious accidental repetitions and self-corrections only when intent is clear. Do not infer a new actor, object, task, responsibility, or commitment from broken speech. Return only the target-language message:\n\n${fragment.rawSourceText}`,
     inferenceInput(agent),
   );
 }
@@ -91,9 +87,7 @@ function queuePolish(fragmentId) {
   const fragment = state.fragments.get(fragmentId);
   if (!fragment || fragment.polishQueued || fragment.editingStatus === "done") return;
   if (!fragment.rawTranslation || fragment.briefStatus !== "done") return;
-  // Smart styles trade a little latency for reliability: reconcile against the cleaned source first.
   if (state.outputStyle !== "faithful" && fragment.sttStatus !== "done") return;
-
   fragment.polishQueued = true;
   fragment.editingStatus = "queued";
   state.editQueue.push({ fragmentId, phase: "polish" });
@@ -103,7 +97,6 @@ function queuePolish(fragmentId) {
 function startNextEdit(agent) {
   const state = resolveRuntime().state;
   if (state.editBusy || state.editQueue.length === 0) return;
-
   const task = state.editQueue.shift();
   const { fragmentId, phase } = task;
   const fragment = state.fragments.get(fragmentId);
@@ -116,10 +109,9 @@ function startNextEdit(agent) {
     fragment.briefStatus = "running";
     console.log(`⏱ #${fragmentId} Editor BRIEF START +${delta(fragment)} ms`);
     console.log(`🟣 Editor Agent BRIEF START #${fragmentId}`);
-
     runLoop(
       agent.getId(),
-      `Read this ${state.sourceLanguage} speech fragment and prepare one very short editing brief for a later translator output. Desired output style: ${state.outputStyle}. Identify only the clearly supported intended meaning and facts that must be preserved. Flag ambiguity explicitly. Never infer an unstated actor, object, task, responsibility, promise, reason, or deadline. For smart styles, note profanity, filler, roughness, repetition, false starts, or self-corrections that can be cleaned. Do not translate the sentence. Return one concise line only:\n\n${fragment.rawSourceText}`,
+      `Read this ${state.sourceLanguage} speech fragment and prepare one short editing brief. Desired output style: ${state.outputStyle}. Identify only clearly supported intent and facts, flag ambiguity, and note speech clutter that may be removed. Never infer unstated actors, tasks, responsibilities, promises, reasons, or deadlines. Do not translate. Return one concise line:\n\n${fragment.rawSourceText}`,
       inferenceInput(agent),
     );
     return;
@@ -134,42 +126,77 @@ function startNextEdit(agent) {
 
   console.log(`⏱ #${fragmentId} Editor POLISH START +${delta(fragment)} ms`);
   console.log(`🟣 Editor Agent POLISH START #${fragmentId}`);
-
   runLoop(
     agent.getId(),
-    `Produce the final translation by reconciling the translator draft with the cleaned source transcript and the editing brief. ${styleInstruction(state.outputStyle)} The cleaned source is the authority for factual content. Delete any detail in the draft that is not clearly supported by the cleaned source, especially invented actors, objects, requests, responsibilities, reasons, promises, or commitments. If a source clause remains ambiguous, prefer a shorter neutral formulation or omit only that uncertain detail rather than guessing. Correct mistranslation, awkward phrasing, register, grammar, punctuation, and surviving speech noise. Return only the final target-language message, with no commentary.\n\nEditing brief: ${fragment.styleBrief || "Preserve only clearly supported intent."}\n\nPrevious context: ${previous || "(none)"}\n\nCleaned source transcript: ${fragment.sourceText || fragment.rawSourceText}\n\nTranslator draft: ${fragment.rawTranslation}`,
+    `Produce the final translation by reconciling the translator draft with the cleaned source and editing brief. ${styleInstruction(state.outputStyle)} The cleaned source is authoritative for facts. Delete unsupported details instead of guessing. Correct mistranslation, awkward phrasing, register, grammar, punctuation, and surviving speech noise. Return only the final target-language message.\n\nEditing brief: ${fragment.styleBrief || "Preserve only clearly supported intent."}\n\nPrevious context: ${previous || "(none)"}\n\nCleaned source: ${fragment.sourceText || fragment.rawSourceText}\n\nTranslator draft: ${fragment.rawTranslation}`,
+    inferenceInput(agent),
+  );
+}
+
+function queueVoiceFinal(fragmentId) {
+  const state = resolveRuntime().state;
+  const fragment = state.fragments.get(fragmentId);
+  if (!fragment || fragment.voiceFinalQueued || fragment.voiceStatus === "done") return;
+  if (!fragment.finalText || fragment.voicePlanStatus !== "done") return;
+  fragment.voiceFinalQueued = true;
+  fragment.voiceStatus = "queued";
+  state.voiceQueue.push({ fragmentId, phase: "script" });
+  startNextVoice(voiceWriterAgent);
+}
+
+function startNextVoice(agent) {
+  const state = resolveRuntime().state;
+  if (state.voiceBusy || state.voiceQueue.length === 0) return;
+  const task = state.voiceQueue.shift();
+  const { fragmentId, phase } = task;
+  const fragment = state.fragments.get(fragmentId);
+  if (!fragment) return;
+
+  state.voiceBusy = true;
+  state.activeVoiceTask = task;
+
+  if (phase === "plan") {
+    fragment.voicePlanStatus = "running";
+    console.log(`⏱ #${fragmentId} Voice PLAN START +${delta(fragment)} ms`);
+    console.log(`🟢 Voice Writer PLAN START #${fragmentId}`);
+    runLoop(
+      agent.getId(),
+      `Prepare a very short spoken-delivery plan for this ${state.sourceLanguage} utterance that will later be translated into ${state.targetLanguage}. Desired output style: ${state.outputStyle}. Identify the intended spoken rhythm, what should sound natural aloud, and what filler or rough speech can be omitted. Preserve facts exactly and flag ambiguity; do not invent anything and do not translate yet. Return one concise line:\n\n${fragment.rawSourceText}`,
+      inferenceInput(agent),
+    );
+    return;
+  }
+
+  fragment.voiceStatus = "running";
+  console.log(`⏱ #${fragmentId} Voice SCRIPT START +${delta(fragment)} ms`);
+  console.log(`🟢 Voice Writer SCRIPT START #${fragmentId}`);
+  runLoop(
+    agent.getId(),
+    `Create the spoken version of this verified ${state.targetLanguage} message for text-to-speech. Keep every factual meaning, name, date, time, number, request, commitment, and constraint unchanged. Make it natural to hear aloud: concise sentences, smooth rhythm, no bureaucratic wording, no markdown, no stage directions. Do not add or remove substantive information. Return only the spoken script.\n\nVoice plan: ${fragment.voicePlan || "Natural spoken delivery; preserve all facts."}\n\nVerified text: ${fragment.finalText}`,
     inferenceInput(agent),
   );
 }
 
 class SourceFragmentSpecification extends SituationSpecification {
-  isSatisfiedBy({ event }) {
-    return event.type === "source.fragment";
-  }
+  isSatisfiedBy({ event }) { return event.type === "source.fragment"; }
 }
-
 class FragmentCreatedSpecification extends SituationSpecification {
-  isSatisfiedBy({ event }) {
-    return event.type === "fragment.created";
-  }
+  isSatisfiedBy({ event }) { return event.type === "fragment.created"; }
 }
-
 class TranslationReadySpecification extends SituationSpecification {
-  isSatisfiedBy({ event }) {
-    return event.type === "translation.ready";
-  }
+  isSatisfiedBy({ event }) { return event.type === "translation.ready"; }
 }
-
+class OutputReadySpecification extends SituationSpecification {
+  isSatisfiedBy({ event }) { return event.type === "output.ready"; }
+}
 class ModelAnswerSpecification extends SituationSpecification {
-  isSatisfiedBy({ event }) {
-    return event.type === "model.answer";
-  }
+  isSatisfiedBy({ event }) { return event.type === "model.answer"; }
 }
 
 export const inputAgent = createAgent({
   name: "Source Agent",
   capabilities: ["inference"],
-  instruction: "You clean speech transcripts for downstream translation: restore punctuation, remove obvious speech slips, and never invent meaning to resolve ambiguity.",
+  instruction: "Clean speech transcripts while preserving intended meaning and genuine ambiguity.",
   tools: [],
   handlers: [
     {
@@ -182,7 +209,6 @@ export const inputAgent = createAgent({
           state.sourceQueue.push(id);
           console.log(`⏱ #${id} Fragment CREATED +${delta(fragment)} ms`);
           console.log(`🔵 Source QUEUED #${id}: ${fragment.rawSourceText}`);
-
           publishCustomEvent("fragment.created", inputAgent, { fragmentId: id });
           startNextSource(inputAgent);
         },
@@ -193,19 +219,15 @@ export const inputAgent = createAgent({
       processor: {
         apply({ event }) {
           if (event.producerId !== inputAgent.getId()) return;
-
           const state = resolveRuntime().state;
           const fragmentId = state.activeSourceFragmentId;
           const fragment = state.fragments.get(fragmentId);
           if (!fragment) return;
-
           fragment.sourceText = answerText(event.payload.answer).trim() || fragment.rawSourceText;
           fragment.sttStatus = "done";
           fragment.normalizedAt = Date.now();
-
           console.log(`⏱ #${fragmentId} Source DONE +${delta(fragment)} ms`);
           console.log(`✅ Source Agent DONE #${fragmentId}: ${fragment.sourceText}`);
-
           state.sourceBusy = false;
           state.activeSourceFragmentId = null;
           publishCustomEvent("source.normalized", inputAgent, { fragmentId });
@@ -220,7 +242,7 @@ export const inputAgent = createAgent({
 export const translatorAgent = createAgent({
   name: "Translator Agent",
   capabilities: ["inference"],
-  instruction: "You are a fast professional translator. Preserve factual intent and apply the selected output style without inventing content.",
+  instruction: "Translate quickly while preserving factual intent and selected output style.",
   tools: [],
   handlers: [
     {
@@ -238,19 +260,15 @@ export const translatorAgent = createAgent({
       processor: {
         apply({ event }) {
           if (event.producerId !== translatorAgent.getId()) return;
-
           const state = resolveRuntime().state;
           const fragmentId = state.activeTranslationFragmentId;
           const fragment = state.fragments.get(fragmentId);
           if (!fragment) return;
-
-          fragment.rawTranslation = answerText(event.payload.answer);
+          fragment.rawTranslation = answerText(event.payload.answer).trim();
           fragment.translationStatus = "done";
           fragment.translatedAt = Date.now();
-
           console.log(`⏱ #${fragmentId} Translator DONE +${delta(fragment)} ms`);
           console.log(`✅ Translator DONE #${fragmentId}: ${fragment.rawTranslation}`);
-
           state.translationBusy = false;
           state.activeTranslationFragmentId = null;
           publishCustomEvent("translation.ready", translatorAgent, { fragmentId });
@@ -264,7 +282,7 @@ export const translatorAgent = createAgent({
 export const editorAgent = createAgent({
   name: "Editor Agent",
   capabilities: ["inference"],
-  instruction: "You coordinate intent/style analysis and final factual reconciliation. Never invent facts to resolve broken speech.",
+  instruction: "Analyze intent and reconcile the final translation against the cleaned source without inventing facts.",
   tools: [],
   handlers: [
     {
@@ -282,18 +300,13 @@ export const editorAgent = createAgent({
     },
     {
       specification: new TranslationReadySpecification(),
-      processor: {
-        apply({ event }) {
-          queuePolish(event.payload.fragmentId);
-        },
-      },
+      processor: { apply({ event }) { queuePolish(event.payload.fragmentId); } },
     },
     {
       specification: new ModelAnswerSpecification(),
       processor: {
         apply({ event }) {
           if (event.producerId !== editorAgent.getId()) return;
-
           const state = resolveRuntime().state;
           const task = state.activeEditTask;
           if (!task) return;
@@ -306,7 +319,6 @@ export const editorAgent = createAgent({
             fragment.briefedAt = Date.now();
             console.log(`⏱ #${fragment.id} Editor BRIEF DONE +${delta(fragment)} ms`);
             console.log(`✅ Editor Agent BRIEF DONE #${fragment.id}: ${fragment.styleBrief}`);
-
             state.editBusy = false;
             state.activeEditTask = null;
             queuePolish(fragment.id);
@@ -317,14 +329,74 @@ export const editorAgent = createAgent({
           fragment.finalText = answerText(event.payload.answer).trim() || fragment.rawTranslation;
           fragment.editingStatus = "done";
           fragment.completedAt = Date.now();
-
           console.log(`⏱ #${fragment.id} Editor POLISH DONE +${delta(fragment)} ms`);
           console.log(`✅ Editor Agent POLISH DONE #${fragment.id}: ${fragment.finalText}`);
-
           state.editBusy = false;
           state.activeEditTask = null;
           publishCustomEvent("output.ready", editorAgent, { fragmentId: fragment.id });
           startNextEdit(editorAgent);
+        },
+      },
+    },
+  ],
+});
+
+export const voiceWriterAgent = createAgent({
+  name: "Voice Writer Agent",
+  capabilities: ["inference"],
+  instruction: "Prepare natural spoken scripts for TTS while preserving every verified fact.",
+  tools: [],
+  handlers: [
+    {
+      specification: new FragmentCreatedSpecification(),
+      processor: {
+        apply({ event }) {
+          const state = resolveRuntime().state;
+          const fragment = state.fragments.get(event.payload.fragmentId);
+          if (!fragment) return;
+          fragment.voicePlanStatus = "queued";
+          state.voiceQueue.push({ fragmentId: fragment.id, phase: "plan" });
+          startNextVoice(voiceWriterAgent);
+        },
+      },
+    },
+    {
+      specification: new OutputReadySpecification(),
+      processor: { apply({ event }) { queueVoiceFinal(event.payload.fragmentId); } },
+    },
+    {
+      specification: new ModelAnswerSpecification(),
+      processor: {
+        apply({ event }) {
+          if (event.producerId !== voiceWriterAgent.getId()) return;
+          const state = resolveRuntime().state;
+          const task = state.activeVoiceTask;
+          if (!task) return;
+          const fragment = state.fragments.get(task.fragmentId);
+          if (!fragment) return;
+
+          if (task.phase === "plan") {
+            fragment.voicePlan = answerText(event.payload.answer).trim();
+            fragment.voicePlanStatus = "done";
+            fragment.voicePlannedAt = Date.now();
+            console.log(`⏱ #${fragment.id} Voice PLAN DONE +${delta(fragment)} ms`);
+            console.log(`✅ Voice Writer PLAN DONE #${fragment.id}: ${fragment.voicePlan}`);
+            state.voiceBusy = false;
+            state.activeVoiceTask = null;
+            queueVoiceFinal(fragment.id);
+            startNextVoice(voiceWriterAgent);
+            return;
+          }
+
+          fragment.spokenText = answerText(event.payload.answer).trim() || fragment.finalText;
+          fragment.voiceStatus = "done";
+          fragment.voiceCompletedAt = Date.now();
+          console.log(`⏱ #${fragment.id} Voice SCRIPT DONE +${delta(fragment)} ms`);
+          console.log(`✅ Voice Writer SCRIPT DONE #${fragment.id}: ${fragment.spokenText}`);
+          state.voiceBusy = false;
+          state.activeVoiceTask = null;
+          publishCustomEvent("voice.ready", voiceWriterAgent, { fragmentId: fragment.id });
+          startNextVoice(voiceWriterAgent);
         },
       },
     },
