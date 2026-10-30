@@ -29,6 +29,10 @@ function publishCustomEvent(type, producer, payload) {
   sendEvent(event, producer.getId());
 }
 
+function delta(fragment) {
+  return Date.now() - (fragment.clientFinalAt || fragment.serverReceivedAt || fragment.createdAt);
+}
+
 function startNextSource(agent) {
   const state = resolveRuntime().state;
   if (state.sourceBusy || state.sourceQueue.length === 0) return;
@@ -40,6 +44,7 @@ function startNextSource(agent) {
   state.sourceBusy = true;
   state.activeSourceFragmentId = fragmentId;
 
+  console.log(`⏱ #${fragmentId} Source START +${delta(fragment)} ms`);
   console.log(`🔵 Source Agent START #${fragmentId}: ${fragment.rawSourceText}`);
 
   runLoop(
@@ -61,6 +66,7 @@ function startNextTranslation(agent) {
   state.activeTranslationFragmentId = fragmentId;
   fragment.translationStatus = "running";
 
+  console.log(`⏱ #${fragmentId} Translator START +${delta(fragment)} ms`);
   console.log(`🟠 Translator START #${fragmentId}: ${fragment.rawSourceText}`);
 
   runLoop(
@@ -88,6 +94,7 @@ function startNextEdit(agent) {
     .slice(-2)
     .join(" ");
 
+  console.log(`⏱ #${fragmentId} Editor START +${delta(fragment)} ms`);
   console.log(`🟣 Editor START #${fragmentId}`);
 
   runLoop(
@@ -132,12 +139,12 @@ export const inputAgent = createAgent({
       processor: {
         apply({ event }) {
           const state = resolveRuntime().state;
-          const { id, text } = event.payload;
-          const fragment = state.createFragment(id, text);
+          const { id, text, clientFinalAt, serverReceivedAt } = event.payload;
+          const fragment = state.createFragment(id, text, { clientFinalAt, serverReceivedAt });
           state.sourceQueue.push(id);
+          console.log(`⏱ #${id} Fragment CREATED +${delta(fragment)} ms`);
           console.log(`🔵 Source QUEUED #${id}: ${fragment.rawSourceText}`);
 
-          // Publish immediately so translation can run in parallel with source cleanup.
           publishCustomEvent("fragment.created", inputAgent, { fragmentId: id });
           startNextSource(inputAgent);
         },
@@ -158,6 +165,7 @@ export const inputAgent = createAgent({
           fragment.sttStatus = "done";
           fragment.normalizedAt = Date.now();
 
+          console.log(`⏱ #${fragmentId} Source DONE +${delta(fragment)} ms`);
           console.log(`✅ Source Agent DONE #${fragmentId}: ${fragment.sourceText}`);
 
           state.sourceBusy = false;
@@ -201,6 +209,7 @@ export const translatorAgent = createAgent({
           fragment.translationStatus = "done";
           fragment.translatedAt = Date.now();
 
+          console.log(`⏱ #${fragmentId} Translator DONE +${delta(fragment)} ms`);
           console.log(`✅ Translator DONE #${fragmentId}: ${fragment.rawTranslation}`);
 
           state.translationBusy = false;
@@ -244,6 +253,7 @@ export const editorAgent = createAgent({
           fragment.editingStatus = "done";
           fragment.completedAt = Date.now();
 
+          console.log(`⏱ #${fragmentId} Editor DONE +${delta(fragment)} ms`);
           console.log(`✅ Editor DONE #${fragmentId}: ${fragment.finalText}`);
 
           state.editBusy = false;
