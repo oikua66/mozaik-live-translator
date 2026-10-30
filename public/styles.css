@@ -92,7 +92,7 @@ select:focus { outline: 3px solid rgba(183, 212, 59, .24); border-color: var(--a
   grid-template-columns: repeat(3, 1fr);
   gap: 12px;
   padding: 14px 16px;
-  margin-bottom: 16px;
+  margin-bottom: 10px;
   background: var(--charcoal);
   border-color: var(--charcoal);
   color: #fffaf0;
@@ -103,6 +103,17 @@ select:focus { outline: 3px solid rgba(183, 212, 59, .24); border-color: var(--a
 .dot { width: 10px; height: 10px; border-radius: 50%; background: #777c72; flex: none; }
 .dot.running { background: var(--accent); box-shadow: 0 0 0 5px rgba(183, 212, 59, .16); }
 .dot.queued { background: #d3a93f; }
+
+.latency {
+  margin: 0 0 16px;
+  padding: 9px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: rgba(255, 250, 240, .72);
+  color: #625c54;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
 
 .workspace {
   display: grid;
