@@ -1,10 +1,11 @@
 import { defineRuntime, RuntimeState } from "@mozaik-ai/core";
 
 export class TranslatorState extends RuntimeState {
-  constructor({ sourceLanguage = "ru", targetLanguage = "en" } = {}) {
+  constructor({ sourceLanguage = "ru", targetLanguage = "en", outputStyle = "polite" } = {}) {
     super();
     this.sourceLanguage = sourceLanguage;
     this.targetLanguage = targetLanguage;
+    this.outputStyle = outputStyle;
     this.fragments = new Map();
     this.sourceQueue = [];
     this.translationQueue = [];
