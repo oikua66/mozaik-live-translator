@@ -104,6 +104,7 @@ function startTtsNow() {
   utterance.pitch = 1;
 
   utterance.onstart = () => {
+    console.log(`[TIMING] TTS START ${Date.now()}`);
     lastSpokenFragmentId = batch.lastId;
     listeningBadge.textContent = 'Speaking';
     notice.textContent = 'Speaking translation. Editor continues polishing in the background.';
@@ -192,10 +193,13 @@ async function refresh() {
   }
 }
 
-async function sendFragment(text) {
+async function sendFragment(text, clientFinalAt) {
   const clean = text.trim();
   if (!clean) return;
-  await api('/api/fragment', { method: 'POST', body: JSON.stringify({ text: clean }) });
+  await api('/api/fragment', {
+    method: 'POST',
+    body: JSON.stringify({ text: clean, clientFinalAt }),
+  });
   interimText.textContent = '';
   await refresh();
 }
@@ -245,7 +249,9 @@ function startRecognition() {
       const text = event.results[i][0].transcript;
       if (event.results[i].isFinal) {
         userSpeaking = false;
-        await sendFragment(text);
+        const clientFinalAt = Date.now();
+        console.log(`[TIMING] SPEECH FINAL ${clientFinalAt}`);
+        await sendFragment(text, clientFinalAt);
       } else {
         userSpeaking = true;
         interim += text;
