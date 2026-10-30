@@ -11,7 +11,7 @@ const PORT = Number(process.env.PORT || 3000);
 const root = fileURLToPath(new URL("../public/", import.meta.url));
 
 initializeRuntime({
-  state: new TranslatorState({ sourceLanguage: "ru", targetLanguage: "en" }),
+  state: new TranslatorState({ sourceLanguage: "ru", targetLanguage: "en", outputStyle: "polite" }),
 });
 join(inputAgent);
 join(translatorAgent);
@@ -43,6 +43,7 @@ function snapshot() {
   return {
     sourceLanguage: state.sourceLanguage,
     targetLanguage: state.targetLanguage,
+    outputStyle: state.outputStyle,
     sourceBusy: state.sourceBusy,
     translationBusy: state.translationBusy,
     editBusy: state.editBusy,
@@ -53,11 +54,12 @@ function snapshot() {
   };
 }
 
-function resetState({ sourceLanguage, targetLanguage }) {
+function resetState({ sourceLanguage, targetLanguage, outputStyle }) {
   const state = resolveRuntime().state;
   if (state.sourceBusy || state.translationBusy || state.editBusy) return false;
   state.sourceLanguage = sourceLanguage || state.sourceLanguage;
   state.targetLanguage = targetLanguage || state.targetLanguage;
+  state.outputStyle = outputStyle || state.outputStyle;
   state.fragments.clear();
   state.sourceQueue.length = 0;
   state.translationQueue.length = 0;
@@ -92,10 +94,11 @@ const server = http.createServer(async (req, res) => {
       const body = await readJson(req);
       const state = resolveRuntime().state;
       if (state.sourceBusy || state.translationBusy || state.editBusy) {
-        return json(res, 409, { error: "Agents are busy. Stop speaking and wait before changing languages." });
+        return json(res, 409, { error: "Agents are busy. Stop speaking and wait before changing settings." });
       }
       state.sourceLanguage = body.sourceLanguage || state.sourceLanguage;
       state.targetLanguage = body.targetLanguage || state.targetLanguage;
+      state.outputStyle = body.outputStyle || state.outputStyle;
       return json(res, 200, snapshot());
     }
 
