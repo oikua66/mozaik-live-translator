@@ -35,12 +35,12 @@ function delta(fragment) {
 
 function styleInstruction(style) {
   if (style === "polite") {
-    return "Render the speaker's intended message in a polite, clean, natural form. The speaker may talk casually, abruptly, use fillers, profanity, rough wording, fragments, or self-corrections; preserve the factual intent but remove unnecessary roughness, profanity, filler, and speech clutter. Do not make the message excessively formal or add facts, apologies, promises, or reasons that were not stated.";
+    return "Render the speaker's intended message in a polite, clean, natural form. The speaker may talk casually, abruptly, use fillers, profanity, rough wording, fragments, or self-corrections; preserve the factual intent but remove unnecessary roughness, profanity, filler, and speech clutter. Do not make the message excessively formal. Never invent a subject, object, request, apology, promise, reason, deadline, responsibility, or other fact that the speaker did not clearly state. If part of the source is ambiguous, use a conservative neutral formulation rather than guessing.";
   }
   if (style === "business") {
-    return "Rewrite the speaker's intended message as concise, professional business communication rather than mirroring the speaker's casual style. Preserve every factual point that matters: names, dates, times, numbers, requests, commitments, constraints, and decisions. Remove profanity, filler, slang, repetition, rough phrasing, and conversational clutter. Smooth awkward spoken logic into a coherent professional message when the intended meaning is clear, but never invent facts, excuses, apologies, promises, deadlines, or stronger commitments. Prefer clear business wording such as 'I'm tied up today' over literal casual phrasing such as 'I'm too busy to do anything today'. Keep the result compact and natural, not bureaucratic.";
+    return "Rewrite the speaker's intended message as concise, professional business communication rather than mirroring casual speech. Preserve every clearly stated factual point: names, dates, times, numbers, requests, commitments, constraints, and decisions. Remove profanity, filler, slang, repetition, rough phrasing, and conversational clutter. Never invent who must do something, what must be done, ownership, responsibility, promises, reasons, deadlines, or any other fact not clearly present in the source. If a clause is ambiguous after speech cleanup, omit the uncertain detail or express only the unambiguous intent; never guess. Keep the result compact, natural, and professional, not bureaucratic.";
   }
-  return "Translate faithfully and naturally. Preserve the speaker's intended tone and level of formality while removing only obvious accidental speech noise and self-corrections when the intended wording is clear.";
+  return "Translate faithfully and naturally. Preserve the speaker's intended tone and level of formality while removing only obvious accidental speech noise and self-corrections when the intended wording is clear. Never invent facts to resolve ambiguity.";
 }
 
 function startNextSource(agent) {
@@ -59,7 +59,7 @@ function startNextSource(agent) {
 
   runLoop(
     agent.getId(),
-    `Clean this ${state.sourceLanguage} speech transcript for meaning-preserving downstream translation. Restore punctuation and normal capitalization. Also remove only obvious speech noise such as accidental repetitions, false starts, duplicated words, and immediate self-corrections when the intended wording is clear from context. Keep meaningful hesitation or ambiguity if the intended wording is not clear. Do not translate, embellish, summarize, or change the intended meaning. Return only the cleaned transcript:\n\n${fragment.rawSourceText}`,
+    `Clean this ${state.sourceLanguage} speech transcript for meaning-preserving downstream translation. Restore punctuation and normal capitalization. Remove only obvious speech noise such as accidental repetitions, false starts, duplicated words, and immediate self-corrections when the intended wording is clear from context. If a phrase remains genuinely ambiguous, preserve that ambiguity instead of inventing a subject, object, action, or responsibility. Do not translate, embellish, summarize, or change the intended meaning. Return only the cleaned transcript:\n\n${fragment.rawSourceText}`,
     inferenceInput(agent),
   );
 }
@@ -81,7 +81,7 @@ function startNextTranslation(agent) {
 
   runLoop(
     agent.getId(),
-    `Translate this ${state.sourceLanguage} speech transcript into ${state.targetLanguage}. ${styleInstruction(state.outputStyle)} Silently resolve obvious accidental repetitions, false starts, duplicated words, and immediate self-corrections when intent is clear. If a correction is ambiguous, preserve the ambiguity rather than guessing. Return only the target-language message with no commentary:\n\n${fragment.rawSourceText}`,
+    `Translate this ${state.sourceLanguage} speech transcript into ${state.targetLanguage}. ${styleInstruction(state.outputStyle)} Silently resolve obvious accidental repetitions, false starts, duplicated words, and immediate self-corrections only when intent is clear. Do not infer a new actor, object, task, responsibility, or commitment from broken speech. Return only the target-language message with no commentary:\n\n${fragment.rawSourceText}`,
     inferenceInput(agent),
   );
 }
@@ -91,6 +91,8 @@ function queuePolish(fragmentId) {
   const fragment = state.fragments.get(fragmentId);
   if (!fragment || fragment.polishQueued || fragment.editingStatus === "done") return;
   if (!fragment.rawTranslation || fragment.briefStatus !== "done") return;
+  // Smart styles trade a little latency for reliability: reconcile against the cleaned source first.
+  if (state.outputStyle !== "faithful" && fragment.sttStatus !== "done") return;
 
   fragment.polishQueued = true;
   fragment.editingStatus = "queued";
@@ -117,7 +119,7 @@ function startNextEdit(agent) {
 
     runLoop(
       agent.getId(),
-      `Read this ${state.sourceLanguage} speech fragment and prepare one very short editing brief for a later translator output. Desired output style: ${state.outputStyle}. Identify the intended meaning, facts that must be preserved, and tone/register. For business style, focus on the professional intent rather than the speaker's casual phrasing: note what should be preserved as facts and what can be cleaned as slang, profanity, filler, roughness, repetition, or spoken clutter. Flag obvious accidental repetition, false starts, duplicated words, and self-corrections. Do not translate the sentence. Return one concise line only:\n\n${fragment.rawSourceText}`,
+      `Read this ${state.sourceLanguage} speech fragment and prepare one very short editing brief for a later translator output. Desired output style: ${state.outputStyle}. Identify only the clearly supported intended meaning and facts that must be preserved. Flag ambiguity explicitly. Never infer an unstated actor, object, task, responsibility, promise, reason, or deadline. For smart styles, note profanity, filler, roughness, repetition, false starts, or self-corrections that can be cleaned. Do not translate the sentence. Return one concise line only:\n\n${fragment.rawSourceText}`,
       inferenceInput(agent),
     );
     return;
@@ -135,7 +137,7 @@ function startNextEdit(agent) {
 
   runLoop(
     agent.getId(),
-    `Review the translation against the source intent and desired output style. ${styleInstruction(state.outputStyle)} If the translation already satisfies those requirements, return it unchanged. Correct real problems only: mistranslation, awkward phrasing, wrong register, grammar, punctuation, lost meaning, unnecessary roughness, or speech noise that survived translation. In business mode, prefer a compact professional rewrite of the intended message over a literal rendering of casual spoken wording. Do not invent content. Return only the final target-language message, with no commentary.\n\nEditing brief: ${fragment.styleBrief || "Preserve intent and apply the selected output style."}\n\nPrevious context: ${previous || "(none)"}\n\nCleaned source transcript if available: ${fragment.sourceText || fragment.rawSourceText}\n\nTranslation: ${fragment.rawTranslation}`,
+    `Produce the final translation by reconciling the translator draft with the cleaned source transcript and the editing brief. ${styleInstruction(state.outputStyle)} The cleaned source is the authority for factual content. Delete any detail in the draft that is not clearly supported by the cleaned source, especially invented actors, objects, requests, responsibilities, reasons, promises, or commitments. If a source clause remains ambiguous, prefer a shorter neutral formulation or omit only that uncertain detail rather than guessing. Correct mistranslation, awkward phrasing, register, grammar, punctuation, and surviving speech noise. Return only the final target-language message, with no commentary.\n\nEditing brief: ${fragment.styleBrief || "Preserve only clearly supported intent."}\n\nPrevious context: ${previous || "(none)"}\n\nCleaned source transcript: ${fragment.sourceText || fragment.rawSourceText}\n\nTranslator draft: ${fragment.rawTranslation}`,
     inferenceInput(agent),
   );
 }
@@ -167,7 +169,7 @@ class ModelAnswerSpecification extends SituationSpecification {
 export const inputAgent = createAgent({
   name: "Source Agent",
   capabilities: ["inference"],
-  instruction: "You clean speech transcripts for downstream translation: restore punctuation and remove only obvious accidental speech slips while preserving intended meaning.",
+  instruction: "You clean speech transcripts for downstream translation: restore punctuation, remove obvious speech slips, and never invent meaning to resolve ambiguity.",
   tools: [],
   handlers: [
     {
@@ -207,6 +209,7 @@ export const inputAgent = createAgent({
           state.sourceBusy = false;
           state.activeSourceFragmentId = null;
           publishCustomEvent("source.normalized", inputAgent, { fragmentId });
+          queuePolish(fragmentId);
           startNextSource(inputAgent);
         },
       },
@@ -261,7 +264,7 @@ export const translatorAgent = createAgent({
 export const editorAgent = createAgent({
   name: "Editor Agent",
   capabilities: ["inference"],
-  instruction: "You coordinate intent/style analysis and conservative final polishing. Apply the selected output style while preserving facts and speaker intent.",
+  instruction: "You coordinate intent/style analysis and final factual reconciliation. Never invent facts to resolve broken speech.",
   tools: [],
   handlers: [
     {
@@ -311,7 +314,7 @@ export const editorAgent = createAgent({
             return;
           }
 
-          fragment.finalText = answerText(event.payload.answer);
+          fragment.finalText = answerText(event.payload.answer).trim() || fragment.rawTranslation;
           fragment.editingStatus = "done";
           fragment.completedAt = Date.now();
 
