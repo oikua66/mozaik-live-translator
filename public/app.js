@@ -9,6 +9,7 @@ const translatedText = document.querySelector('#translatedText');
 const interimText = document.querySelector('#interimText');
 const listeningBadge = document.querySelector('#listeningBadge');
 const notice = document.querySelector('#notice');
+const latencyLine = document.querySelector('#latencyLine');
 
 const inputStatus = document.querySelector('#inputStatus');
 const translatorStatus = document.querySelector('#translatorStatus');
@@ -27,6 +28,8 @@ let ttsPlaying = false;
 let ttsWaitingForMicStop = false;
 let stateCache = null;
 let lastSpokenFragmentId = 0;
+const uiRenderedAt = new Map();
+const voiceStartedAt = new Map();
 
 const recognitionLang = {
   ru: 'ru-RU',
@@ -45,6 +48,24 @@ const speechLang = {
 function setStatus(el, dot, value) {
   el.textContent = value;
   dot.className = `dot ${value === 'running' || value === 'listening' ? 'running' : value === 'queued' ? 'queued' : 'idle'}`;
+}
+
+function formatLatency(ms) {
+  return Number.isFinite(ms) ? `${(ms / 1000).toFixed(2)} s` : '—';
+}
+
+function updateLatencyLine(fragments) {
+  const translated = fragments.filter((f) => f.rawTranslation && f.clientFinalAt);
+  const latest = translated[translated.length - 1];
+  if (!latest) {
+    latencyLine.textContent = 'Latency: waiting for speech…';
+    return;
+  }
+
+  const translatorMs = latest.translatedAt ? latest.translatedAt - latest.clientFinalAt : null;
+  const uiMs = uiRenderedAt.has(latest.id) ? uiRenderedAt.get(latest.id) - latest.clientFinalAt : null;
+  const voiceMs = voiceStartedAt.has(latest.id) ? voiceStartedAt.get(latest.id) - latest.clientFinalAt : null;
+  latencyLine.textContent = `Latency #${latest.id} — Translator: ${formatLatency(translatorMs)} | UI: ${formatLatency(uiMs)} | Voice: ${formatLatency(voiceMs)}`;
 }
 
 function cancelTts() {
@@ -77,6 +98,7 @@ function pendingSpeakableBatch() {
   return {
     text: fragments.map((fragment) => visibleTranslation(fragment)).join(' '),
     lastId: fragments[fragments.length - 1].id,
+    fragmentIds: fragments.map((fragment) => fragment.id),
   };
 }
 
@@ -104,10 +126,15 @@ function startTtsNow() {
   utterance.pitch = 1;
 
   utterance.onstart = () => {
-    console.log(`[TIMING] TTS START ${Date.now()}`);
+    const startedAt = Date.now();
+    console.log(`[TIMING] TTS START ${startedAt}`);
+    for (const id of batch.fragmentIds) {
+      if (!voiceStartedAt.has(id)) voiceStartedAt.set(id, startedAt);
+    }
     lastSpokenFragmentId = batch.lastId;
     listeningBadge.textContent = 'Speaking';
     notice.textContent = 'Speaking translation. Editor continues polishing in the background.';
+    updateLatencyLine(stateCache?.fragments || []);
   };
 
   utterance.onend = () => {
@@ -156,6 +183,13 @@ function render(state) {
   const source = fragments.map((f) => f.sourceText).filter(Boolean).join(' ');
   const translated = fragments.map((f) => visibleTranslation(f)).filter(Boolean).join(' ');
 
+  for (const fragment of fragments) {
+    if (fragment.rawTranslation && !uiRenderedAt.has(fragment.id)) {
+      uiRenderedAt.set(fragment.id, Date.now());
+      console.log(`[TIMING] UI RENDER #${fragment.id} ${uiRenderedAt.get(fragment.id)}`);
+    }
+  }
+
   originalText.textContent = source || 'Your speech will appear here.';
   translatedText.textContent = translated || 'The translation will appear here.';
   originalText.classList.toggle('empty', !source);
@@ -172,6 +206,7 @@ function render(state) {
   sourceLanguage.value = state.sourceLanguage || sourceLanguage.value;
   targetLanguage.value = state.targetLanguage || targetLanguage.value;
 
+  updateLatencyLine(fragments);
   requestTts();
 }
 
@@ -283,7 +318,7 @@ function startRecognition() {
   listening = true;
   micButton.textContent = '■ Stop microphone';
   listeningBadge.textContent = 'Listening';
-  notice.textContent = 'Speak naturally. Translation appears as soon as Translator Agent finishes; Editor polishes it in the background.';
+  notice.textContent = 'Speak naturally. Three agents begin coordinated work in parallel.';
   render(stateCache || { fragments: [] });
   recognition.start();
 }
@@ -333,6 +368,8 @@ clearButton.addEventListener('click', async () => {
       body: JSON.stringify({ sourceLanguage: sourceLanguage.value, targetLanguage: targetLanguage.value }),
     });
     lastSpokenFragmentId = 0;
+    uiRenderedAt.clear();
+    voiceStartedAt.clear();
     render(state);
     notice.textContent = 'Session cleared.';
   } catch (error) {
