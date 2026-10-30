@@ -6,10 +6,13 @@ export class TranslatorState extends RuntimeState {
     this.sourceLanguage = sourceLanguage;
     this.targetLanguage = targetLanguage;
     this.fragments = new Map();
+    this.sourceQueue = [];
     this.translationQueue = [];
     this.editQueue = [];
+    this.sourceBusy = false;
     this.translationBusy = false;
     this.editBusy = false;
+    this.activeSourceFragmentId = null;
     this.activeTranslationFragmentId = null;
     this.activeEditFragmentId = null;
   }
@@ -17,13 +20,15 @@ export class TranslatorState extends RuntimeState {
   createFragment(id, sourceText) {
     const fragment = {
       id,
+      rawSourceText: sourceText,
       sourceText,
       rawTranslation: null,
       finalText: null,
-      sttStatus: "done",
+      sttStatus: "normalizing",
       translationStatus: "pending",
       editingStatus: "pending",
       createdAt: Date.now(),
+      normalizedAt: null,
       translatedAt: null,
       completedAt: null,
     };
