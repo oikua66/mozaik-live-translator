@@ -3,63 +3,84 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Corporate Agent Network Showcase</title>
+  <meta name="theme-color" content="#0b1020" />
+  <title>Corporate Agent Network</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
+  <div class="ambient ambient-a"></div>
+  <div class="ambient ambient-b"></div>
+
   <div id="architectureView" class="view active">
     <main class="shell">
-      <header class="hero">
-        <div>
+      <nav class="topbar">
+        <div class="brandmark"><span class="brand-orb">M</span><div><strong>Corporate Agent Network</strong><small>Built on Mozaik</small></div></div>
+        <div class="chrome-note"><span class="status-light"></span>Optimized for Chrome · Desktop &amp; Android</div>
+      </nav>
+
+      <header class="hero hero-architecture">
+        <div class="hero-copy">
           <div class="eyebrow">Mozaik Freestyle 2026 · Elastic Agent Workforce</div>
-          <h1>Corporate Agent Network</h1>
-          <p>Personal agents follow active employees. Specialist agents are created on demand, coordinate through shared state, and disappear when the task is done.</p>
+          <h1>AI agents that appear<br/>when the company needs them.</h1>
+          <p>Personal agents follow active employees. Temporary specialist teams are created on demand, coordinate through shared state, and disappear after the work is finished.</p>
+          <div class="hero-tags"><span>Dynamic join / leave</span><span>Parallel agents</span><span>Shared state</span><span>Real LLM</span></div>
         </div>
-        <div class="counter"><span>Active agents</span><strong id="activeAgents">—</strong></div>
+        <div class="counter glass-card"><span>Active agents</span><strong id="activeAgents">—</strong><small>live workforce</small></div>
       </header>
 
+      <section class="flowline" aria-label="Architecture flow">
+        <div class="flow-node"><span class="flow-icon">👤</span><div><small>Employees</small><strong>Personal agents</strong></div></div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-node"><span class="flow-icon">🛡</span><div><small>Permanent</small><strong>Sysadmin agent</strong></div></div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-node accent"><span class="flow-icon">⚡</span><div><small>On demand</small><strong>Specialist module</strong></div></div>
+        <span class="flow-arrow">→</span>
+        <div class="flow-node"><span class="flow-icon">◎</span><div><small>Coordination</small><strong>Shared state</strong></div></div>
+      </section>
+
       <section class="lifecycle">
-        <div><span>Elastic lifecycle</span><strong id="lifecycleTrace">—</strong></div>
+        <div><span>Elastic lifecycle</span><strong id="lifecycleTrace">—</strong><small>watch capacity expand and contract</small></div>
         <div><span>Current phase</span><strong id="phaseLabel">IDLE</strong></div>
         <div><span>Module lifecycle</span><strong id="moduleLifecycle">READY</strong></div>
       </section>
 
       <section class="stats">
-        <article><span>Sysadmin</span><strong>1</strong><small>permanent · monitoring</small></article>
-        <article><span>Personal agents</span><strong id="personalCount">—</strong><small>elastic · active employees</small></article>
-        <article><span>Specialist agents</span><strong id="specialistCount">—</strong><small>temporary · on demand</small></article>
+        <article><div class="stat-icon sys">S</div><div><span>Sysadmin</span><strong>1</strong><small>permanent · monitoring</small></div></article>
+        <article><div class="stat-icon people">P</div><div><span>Personal agents</span><strong id="personalCount">—</strong><small>elastic · active employees</small></div></article>
+        <article><div class="stat-icon spark">✦</div><div><span>Specialist agents</span><strong id="specialistCount">—</strong><small>temporary · on demand</small></div></article>
       </section>
 
-      <section class="controls demo-controls">
-        <button id="scenarioButton" class="primary" type="button">▶ Run elastic workforce demo</button>
-        <div>Scenario: <strong id="scenarioStatus">idle</strong></div>
+      <section class="controls demo-controls glass-card">
+        <button id="scenarioButton" class="primary hero-button" type="button">▶ Run elastic workforce demo</button>
+        <div class="scenario-meta">Scenario <strong id="scenarioStatus">idle</strong></div>
         <div class="parallel-state"><span class="parallel-dot"></span><strong id="parallelStatus">No specialist work</strong></div>
       </section>
 
       <section id="liveHandoff" class="live-handoff" hidden>
-        <div>
+        <div class="handoff-icon">✓</div>
+        <div class="handoff-copy">
           <span class="handoff-label">Architecture proven</span>
-          <strong>Switch to a live communication use case.</strong>
-          <p>The next screen uses the live communication module inside this same product.</p>
+          <strong>Now use the same product for live multilingual communication.</strong>
+          <p>The next screen runs the integrated voice module inside this same application.</p>
         </div>
-        <button id="enterLiveButton" class="live-button" type="button">🎙 Enter Live Voice Mode</button>
+        <button id="enterLiveButton" class="live-button" type="button">🎙 Enter Live Voice Mode <span>→</span></button>
       </section>
 
       <section class="grid">
-        <article class="panel">
-          <div class="panelhead"><h2>Personal employee agents</h2><span>dynamic membership</span></div>
-          <div id="employees" class="cards"></div>
+        <article class="panel workforce-panel">
+          <div class="panelhead"><div><span class="section-kicker">01 · Workforce</span><h2>Personal employee agents</h2></div><span>dynamic membership</span></div>
+          <div id="employees" class="cards employee-cards"></div>
         </article>
-        <article class="panel">
-          <div class="panelhead"><h2>On-demand modules</h2><span>temporary specialists</span></div>
+        <article class="panel module-panel">
+          <div class="panelhead"><div><span class="section-kicker">02 · Elastic capacity</span><h2>On-demand modules</h2></div><span>temporary specialists</span></div>
           <div id="modules" class="cards empty">No specialist module is active.</div>
         </article>
       </section>
 
-      <section class="panel logpanel">
-        <div class="panelhead"><h2>Sysadmin event stream</h2><span id="sysadminStatus">monitoring</span></div>
-        <div id="eventLog" class="eventlog"></div>
-      </section>
+      <details class="log-details" open>
+        <summary><div><span class="section-kicker">03 · Observability</span><strong>Sysadmin event stream</strong></div><span id="sysadminStatus" class="monitor-badge">monitoring</span></summary>
+        <section class="panel logpanel"><div id="eventLog" class="eventlog"></div></section>
+      </details>
 
       <details class="advanced-controls">
         <summary>Advanced demo controls</summary>
@@ -76,42 +97,54 @@
 
   <div id="voiceView" class="view">
     <main class="shell">
-      <div class="modebar"><button id="backButton" type="button">← Back to architecture</button><span>Live Voice Mode · unified communication runtime</span></div>
-      <header class="hero">
-        <div>
-          <div class="eyebrow">Live communication module</div>
-          <h1>Live Multi-Agent Translator</h1>
-          <p>Speak freely. Four agents coordinate in parallel: source cleanup, translation, factual editing, and a dedicated spoken script.</p>
+      <nav class="topbar voice-topbar">
+        <div class="brandmark"><span class="brand-orb">M</span><div><strong>Corporate Agent Network</strong><small>Live communication module</small></div></div>
+        <button id="backButton" class="ghost-button" type="button">← Architecture</button>
+      </nav>
+
+      <header class="hero voice-hero">
+        <div class="hero-copy">
+          <div class="eyebrow">Live Voice Mode · Unified Communication Runtime</div>
+          <h1>Speak once.<br/>Agents coordinate while you talk.</h1>
+          <p>Speech recognition, translation, editorial verification and a natural spoken version are handled by cooperating agents in the same product.</p>
         </div>
-        <button id="micButton" class="mic" type="button">🎙 Start microphone</button>
+        <button id="micButton" class="mic" type="button"><span class="mic-orb">🎙</span><span>Start microphone</span></button>
       </header>
 
-      <section class="controls">
+      <section class="controls voice-controls glass-card">
         <label>Input language<select id="sourceLanguage"><option value="ru" selected>Russian</option><option value="uk">Ukrainian</option><option value="sr">Serbian</option><option value="en">English</option></select></label>
         <label>Output language<select id="targetLanguage"><option value="en" selected>English</option><option value="sr">Serbian</option><option value="uk">Ukrainian</option><option value="ru">Russian</option></select></label>
         <label>Output style<select id="outputStyle"><option value="faithful">Faithful</option><option value="polite" selected>Polite &amp; clean</option><option value="business">Business</option></select></label>
         <label>Voice output<select id="voiceOutput"><option value="auto" selected>Auto</option><option value="off">Off</option></select></label>
-        <button id="clearButton" type="button">Clear</button>
+        <button id="clearButton" class="ghost-button" type="button">Clear</button>
       </section>
 
       <section class="agentbar">
-        <div class="agent"><span id="inputDot" class="dot idle"></span><strong>Source Agent</strong><span id="inputStatus">idle</span></div>
-        <div class="agent"><span id="translatorDot" class="dot idle"></span><strong>Translator Agent</strong><span id="translatorStatus">idle</span></div>
-        <div class="agent"><span id="editorDot" class="dot idle"></span><strong>Editor Agent</strong><span id="editorStatus">idle</span></div>
-        <div class="agent"><span id="voiceWriterDot" class="dot idle"></span><strong>Voice Writer</strong><span id="voiceWriterStatus">idle</span></div>
+        <div class="agent"><span id="inputDot" class="dot idle"></span><div><strong>Source Agent</strong><span id="inputStatus">idle</span></div></div>
+        <div class="agent"><span id="translatorDot" class="dot idle"></span><div><strong>Translator Agent</strong><span id="translatorStatus">idle</span></div></div>
+        <div class="agent"><span id="editorDot" class="dot idle"></span><div><strong>Editor Agent</strong><span id="editorStatus">idle</span></div></div>
+        <div class="agent"><span id="voiceWriterDot" class="dot idle"></span><div><strong>Voice Writer</strong><span id="voiceWriterStatus">idle</span></div></div>
       </section>
       <div id="latencyLine" class="latency">Latency: waiting for speech…</div>
 
       <section class="workspace">
-        <article class="panel"><div class="panelhead"><h2>Original</h2><span id="listeningBadge">Ready</span></div><div id="originalText" class="textstream empty">Your speech will appear here.</div><div id="interimText" class="interim"></div></article>
-        <article class="panel"><div class="panelhead"><h2>Translation</h2><button id="copyButton" class="linkbutton" type="button">Copy</button></div><div id="translatedText" class="textstream empty">The translation will appear here.</div></article>
+        <article class="panel transcript-panel original-panel">
+          <div class="panelhead"><div><span class="section-kicker">Input</span><h2>Original</h2></div><span id="listeningBadge" class="monitor-badge">Ready</span></div>
+          <div id="originalText" class="textstream empty">Your speech will appear here.</div>
+          <div id="interimText" class="interim"></div>
+        </article>
+        <article class="panel transcript-panel translation-panel">
+          <div class="panelhead"><div><span class="section-kicker">Verified output</span><h2>Translation</h2></div><button id="copyButton" class="linkbutton" type="button">Copy</button></div>
+          <div id="translatedText" class="textstream empty">The translation will appear here.</div>
+        </article>
       </section>
 
       <section class="panel voicepanel">
-        <div class="panelhead"><div><h2>Voice script</h2><span>Generated by Voice Writer Agent for natural spoken delivery</span></div><button id="saveVoiceButton" type="button" disabled>Save voice MP3</button></div>
+        <div class="panelhead"><div><span class="section-kicker">Natural delivery</span><h2>Voice script</h2><span>Generated by Voice Writer Agent for spoken communication</span></div><button id="saveVoiceButton" class="ghost-button" type="button" disabled>Save voice MP3</button></div>
         <div id="voiceScriptText" class="voice-script empty">The spoken version will appear here after verification.</div>
       </section>
-      <p id="notice" class="notice">Chrome is recommended for microphone speech recognition.</p>
+
+      <p id="notice" class="notice"><span class="status-light"></span>Optimized for Google Chrome on desktop and Android. Other browsers may limit speech recognition or automatic playback.</p>
     </main>
   </div>
 
