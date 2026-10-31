@@ -156,33 +156,27 @@ async function resetDemoTopology() {
   for (const profile of initialEmployees) registerEmployee(profile);
 }
 
-function communicationModuleIsIdle(module) {
-  if (!module) return true;
-  const membersIdle = module.members.every((member) => !member.busy && member.queue.length === 0);
-  const requestsComplete = module.requests.every((request) =>
-    Boolean(request.results?.Translator && request.results?.Editor && request.results?.["Voice Writer"]));
-  return membersIdle && requestsComplete;
+async function waitForCommunicationIdle(timeoutMs = 45000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const state = resolveRuntime().state;
+    const module = [...state.activeModules.values()].find((item) => item.type === "Communication Module");
+    if (!module) return true;
+    const busy = module.members.some((member) => member.busy || member.queue.length);
+    if (!busy) return true;
+    await sleep(150);
+  }
+  return false;
 }
 
-async function waitForCommunicationIdle({ timeoutMs = 45000, pollMs = 200 } = {}) {
+async function waitForCommunicationRelease(timeoutMs = 10000) {
   const deadline = Date.now() + timeoutMs;
-  const state = resolveRuntime().state;
-  state.log("scenario.wait", "Waiting for Communication Module to finish real coordinated work");
-
   while (Date.now() < deadline) {
-    const modules = [...resolveRuntime().state.activeModules.values()]
-      .filter((module) => module.type === "Communication Module");
-
-    if (modules.length === 0 || modules.every(communicationModuleIsIdle)) {
-      state.log("scenario.ready", "Communication Module completed all queued coordinated work");
-      return true;
-    }
-    await sleep(pollMs);
+    const state = resolveRuntime().state;
+    const module = [...state.activeModules.values()].find((item) => item.type === "Communication Module");
+    if (!module) return true;
+    await sleep(150);
   }
-
-  state.log("scenario.timeout", "Communication Module did not become idle before demo timeout", {
-    timeoutMs,
-  });
   return false;
 }
 
@@ -206,21 +200,34 @@ async function runElasticScenario() {
   scenario.step = "marko-request";
   triggerEmployeeAction(controller, "novi-sad-marko");
 
-  scenario.step = "waiting-for-coordinated-output";
-  await waitForCommunicationIdle();
-  await sleep(600);
+  scenario.step = "waiting-for-coordination";
+  const idle = await waitForCommunicationIdle();
+  if (!idle) {
+    state.log("scenario.timeout", "Communication Module did not become idle before timeout");
+  }
+
+  scenario.step = "waiting-for-release";
+  const released = await waitForCommunicationRelease();
+  if (!released) {
+    state.log("scenario.timeout", "Communication Module did not release before timeout; forcing release");
+    for (const moduleId of [...state.activeModules.keys()]) teardownModule(moduleId);
+    await sleep(500);
+  }
 
   scenario.step = "fourth-employee-joins";
   registerEmployee(fourthEmployee);
   state.log("scenario.join", "A fourth office came online: Sarah joined from Tel Aviv");
-  await sleep(1800);
+  await sleep(1400);
 
-  scenario.step = "two-employees-leave";
+  scenario.step = "first-employee-leaves";
   removeEmployee("bvi-james");
-  await sleep(700);
+  state.log("scenario.leave", "James Personal Agent left; capacity contracted automatically");
+  await sleep(1400);
+
+  scenario.step = "second-employee-leaves";
   removeEmployee("novi-sad-marko");
-  state.log("scenario.leave", "Two employee agents left; capacity contracted automatically");
-  await sleep(700);
+  state.log("scenario.leave", "Marko Personal Agent left; capacity contracted automatically");
+  await sleep(1400);
 
   scenario = { running: false, step: "complete", startedAt: scenario.startedAt, completedAt: Date.now() };
   state.log("scenario.complete", "Elastic workforce demo completed");
