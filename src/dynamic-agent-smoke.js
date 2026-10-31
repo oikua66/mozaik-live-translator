@@ -18,7 +18,9 @@ class EmployeeMessageSpecification extends SituationSpecification {
 }
 
 function createEmployeeAgent(profile, received) {
-  return createAgent({
+  let agent;
+
+  agent = createAgent({
     name: `${profile.name} Agent`,
     capabilities: ["inference"],
     instruction: `You represent ${profile.name}, ${profile.role} in ${profile.office}. Preferred language: ${profile.language}.`,
@@ -34,7 +36,7 @@ function createEmployeeAgent(profile, received) {
             const record = {
               employeeId: profile.id,
               employeeName: profile.name,
-              agentId: this?.getId?.() || null,
+              agentId: agent.getId(),
               text: event.payload.text,
               receivedAt: Date.now(),
             };
@@ -43,12 +45,14 @@ function createEmployeeAgent(profile, received) {
             state.dynamicAgentMessages.push(record);
             received.add(profile.id);
 
-            console.log(`✅ ${profile.name} Agent received its event: ${event.payload.text}`);
+            console.log(`✅ ${profile.name} Agent (${agent.getId()}) received its event: ${event.payload.text}`);
           },
         },
       },
     ],
   });
+
+  return agent;
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -115,6 +119,7 @@ await sleep(500);
 const state = resolveRuntime().state;
 const expected = new Set(employees.map((employee) => employee.id));
 const missing = [...expected].filter((id) => !received.has(id));
+const invalidAgentIds = (state.dynamicAgentMessages || []).filter((record) => !record.agentId);
 
 console.log("\n--- RESULT ---");
 console.log(`Dynamic employee agents created: ${employeeAgents.length}`);
@@ -124,7 +129,10 @@ console.log("Shared-state records:", state.dynamicAgentMessages || []);
 if (missing.length) {
   console.error(`❌ FAIL — agents did not receive events: ${missing.join(", ")}`);
   process.exitCode = 1;
+} else if (invalidAgentIds.length) {
+  console.error("❌ FAIL — one or more shared-state records are missing agentId.");
+  process.exitCode = 1;
 } else {
   console.log("✅ PASS — agents created after runtime start joined successfully and immediately handled semantic events.");
-  console.log("✅ PASS — dynamic agents also wrote results into the shared RuntimeState.");
+  console.log("✅ PASS — dynamic agents wrote valid agent IDs into shared RuntimeState.");
 }
