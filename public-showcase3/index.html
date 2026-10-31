@@ -13,9 +13,24 @@
     .module-panel{min-height:520px}
     .module-stage{height:405px;overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable}
     .module-stage #modules{min-height:100%;align-content:start}
+
+    .voice-actions{display:flex;align-items:center;gap:10px}
+    .mic-privacy{display:grid;grid-template-columns:auto auto;column-gap:8px;row-gap:1px;align-items:center;padding:8px 11px;border:1px solid #d0d5dd;border-radius:13px;background:#fff;min-width:132px;transition:.18s ease}
+    .mic-privacy-dot{grid-row:1/3;width:11px;height:11px;border-radius:50%;background:#98a2b3;box-shadow:0 0 0 4px rgba(152,162,179,.12)}
+    .mic-privacy strong{font-size:11px;letter-spacing:.06em;line-height:1.1}
+    .mic-privacy small{font-size:9px;color:#667085;line-height:1.1}
+    .mic-privacy.live{border-color:#f3a4a4;background:#fff5f5;color:#b42318}
+    .mic-privacy.live .mic-privacy-dot{background:#e5484d;box-shadow:0 0 0 5px rgba(229,72,77,.14);animation:micPulse 1s ease-in-out infinite}
+    .mic-privacy.paused{border-color:#f0c36b;background:#fffbeb;color:#9a6700}
+    .mic-privacy.paused .mic-privacy-dot{background:#d98c16;box-shadow:0 0 0 4px rgba(217,140,22,.12)}
+    @keyframes micPulse{50%{box-shadow:0 0 0 9px rgba(229,72,77,.04)}}
+
     @media(max-width:760px){
       .module-panel{min-height:0}
       .module-stage{height:360px}
+      .voice-topbar{align-items:stretch}
+      .voice-actions{width:100%;justify-content:space-between}
+      .mic-privacy{flex:1}
     }
   </style>
 </head>
@@ -111,7 +126,14 @@
     <main class="shell">
       <nav class="topbar voice-topbar">
         <div class="brandmark"><span class="brand-orb">M</span><div><strong>Corporate Agent Network</strong><small>Live communication module</small></div></div>
-        <button id="backButton" class="ghost-button" type="button">← Architecture</button>
+        <div class="voice-actions">
+          <div id="micPrivacy" class="mic-privacy off" aria-live="polite">
+            <span class="mic-privacy-dot"></span>
+            <strong id="micPrivacyText">MIC OFF</strong>
+            <small id="micPrivacyTimer">privacy safe</small>
+          </div>
+          <button id="backButton" class="ghost-button" type="button">← Architecture</button>
+        </div>
       </nav>
 
       <header class="hero voice-hero">
@@ -156,7 +178,7 @@
         <div id="voiceScriptText" class="voice-script empty">The spoken version will appear here after verification.</div>
       </section>
 
-      <p id="notice" class="notice"><span class="status-light"></span>Optimized for Google Chrome on desktop and Android. Other browsers may limit speech recognition or automatic playback.</p>
+      <p id="notice" class="notice"><span class="status-light"></span>Optimized for Google Chrome on desktop and Android. Microphone auto-stops after 20 seconds of silence.</p>
     </main>
   </div>
 
