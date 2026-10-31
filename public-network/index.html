@@ -12,7 +12,7 @@
       <div>
         <div class="eyebrow">Mozaik Freestyle 2026 · Elastic Agent Workforce</div>
         <h1>Corporate Agent Network</h1>
-        <p>Personal agents stay with active employees. Specialist agents are instantiated on demand and released after the task.</p>
+        <p>Personal agents stay with active employees. Specialist agents are instantiated on demand, reused while needed, and released after the task.</p>
       </div>
       <div class="counter">
         <span>Active agents</span>
@@ -27,8 +27,13 @@
     </section>
 
     <section class="controls">
+      <button id="scenarioButton" class="primary" type="button">▶ Run elastic workforce demo</button>
+      <div class="scenario-state">Scenario: <strong id="scenarioStatus">idle</strong></div>
+    </section>
+
+    <section class="controls">
       <label>
-        Employee action
+        Manual employee action
         <select id="employeeSelect"></select>
       </label>
       <button id="actionButton" class="primary" type="button">Trigger multilingual task</button>
