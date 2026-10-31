@@ -51,11 +51,19 @@ function rolePrompt(role, work) {
     return `Translate this ${sourceLanguage} corporate message into ${corporateLanguage}. Preserve names, dates, numbers, requests, commitments and uncertainty exactly. Remove only obvious speech clutter. Do not invent facts. Return only the translated message.\n\n${sourceText}`;
   }
 
-  if (role === "Editor") {
-    return `Act as an independent corporate communication editor. Read this ${sourceLanguage} message and produce a concise ${corporateLanguage} version that is clear, professional and faithful. Preserve all facts and ambiguity. Do not invent actors, deadlines, promises or responsibilities. Return only the edited message.\n\n${sourceText}`;
+  if (role === "Editor" && work.phase === "final") {
+    return `Produce the final edited ${corporateLanguage} message using the shared-state Translator draft and your own earlier editing analysis. The source message remains authoritative for facts. Preserve all names, dates, numbers, requests, commitments and uncertainty. Do not invent actors, deadlines, promises or responsibilities. Return only the final edited message.\n\nSource: ${sourceText}\n\nShared Translator draft: ${work.translatorDraft}\n\nYour earlier analysis: ${work.analysis}`;
   }
 
-  return `Create a natural spoken ${corporateLanguage} version of this ${sourceLanguage} corporate message for text-to-speech. Keep every factual detail unchanged, use short clear sentences, and do not invent anything. Return only the spoken script.\n\n${sourceText}`;
+  if (role === "Editor") {
+    return `Analyze this ${sourceLanguage} corporate message while the Translator works in parallel. Do not translate it yet. Return one concise editing brief describing the factual intent, tone, ambiguity and any speech clutter that may be removed. Never invent actors, deadlines, promises or responsibilities.\n\n${sourceText}`;
+  }
+
+  if (role === "Voice Writer" && work.phase === "final") {
+    return `Create the final natural spoken ${corporateLanguage} version using the shared-state Translator draft and your own earlier voice-delivery plan. Keep every factual detail unchanged. Use short, easy-to-hear sentences. Do not add facts, requests, promises, actors, reasons or commitments. Return only the spoken script.\n\nSource: ${sourceText}\n\nShared Translator draft: ${work.translatorDraft}\n\nYour earlier voice plan: ${work.analysis}`;
+  }
+
+  return `Analyze this ${sourceLanguage} corporate message while the Translator works in parallel. Do not translate it yet. Return one concise voice-delivery plan for a later ${corporateLanguage} spoken version: rhythm, sentence length, and what filler may be removed. Preserve all facts and ambiguity exactly.\n\n${sourceText}`;
 }
 
 function fallbackResult(role, work) {
@@ -114,6 +122,7 @@ function ensureRequestRecord(module, work) {
       corporateLanguage: work.corporateLanguage || "English",
       text: work.text || "",
       createdAt: Date.now(),
+      analyses: {},
       results: {},
     };
     module.requests.push(record);
@@ -132,9 +141,70 @@ function scheduleTeardownWhenIdle(moduleId) {
   module.teardownTimer = setTimeout(() => teardownModule(moduleId), 3500);
 }
 
+function startCoordinatedFinal(module, member, request, baseWork) {
+  if (!module || module.mode !== "real-llm" || member.role === "Translator") return false;
+  const translator = request.results?.Translator?.text;
+  const analysis = request.analyses?.[member.role]?.text;
+  if (!translator || !analysis) return false;
+  if (member.currentWork?.requestId !== request.requestId || member.status !== "waiting") return false;
+
+  const work = {
+    ...baseWork,
+    phase: "final",
+    translatorDraft: translator,
+    analysis,
+  };
+  member.currentWork = work;
+  member.status = "coordinating";
+  member.startedAt = Date.now();
+
+  const state = resolveRuntime().state;
+  state.log("module.coordinate", `${member.role} consumed Translator output from shared state`, {
+    moduleId: module.id,
+    agentId: member.agentId,
+    requestId: request.requestId,
+  });
+
+  try {
+    runLoop(member.agentId, rolePrompt(member.role, work), inferenceInput(member.agent));
+  } catch (error) {
+    state.log("module.error", `${member.role} coordinated inference failed; fallback used`, {
+      moduleId: module.id,
+      agentId: member.agentId,
+      requestId: request.requestId,
+      error: error?.message || String(error),
+    });
+    completeMemberWork(module, member, work, fallbackResult(member.role, work), "fallback-after-error");
+  }
+  return true;
+}
+
 function completeMemberWork(module, member, work, text, mode) {
   const state = resolveRuntime().state;
   const request = ensureRequestRecord(module, work);
+
+  if (module.mode === "real-llm" && member.role !== "Translator" && work.phase !== "final") {
+    request.analyses[member.role] = {
+      text,
+      mode,
+      completedAt: Date.now(),
+      agentId: member.agentId,
+    };
+    member.status = "waiting";
+    member.completedAt = Date.now();
+    member.busy = true;
+    member.currentWork = { ...work, phase: "waiting" };
+    state.log("module.analysis", `${member.role} finished parallel analysis and is waiting for shared Translator output`, {
+      moduleId: module.id,
+      agentId: member.agentId,
+      requestedBy: work.requestedBy || null,
+      requestId: work.requestId,
+      mode,
+    });
+    startCoordinatedFinal(module, member, request, work);
+    return;
+  }
+
   request.results[member.role] = {
     text,
     mode,
@@ -145,13 +215,23 @@ function completeMemberWork(module, member, work, text, mode) {
   member.completedAt = Date.now();
   member.busy = false;
   member.currentWork = null;
-  state.log("module.done", `${member.role} completed real communication work`, {
+
+  state.log("module.done", `${member.role} completed communication work`, {
     moduleId: module.id,
     agentId: member.agentId,
     requestedBy: work.requestedBy || null,
     requestId: work.requestId,
     mode,
   });
+
+  if (member.role === "Translator" && module.mode === "real-llm") {
+    for (const specialist of module.members) {
+      if (specialist.role === "Translator") continue;
+      if (specialist.currentWork?.requestId !== work.requestId || specialist.status !== "waiting") continue;
+      startCoordinatedFinal(module, specialist, request, specialist.currentWork);
+    }
+  }
+
   startNextMemberWork(module, member);
   scheduleTeardownWhenIdle(module.id);
 }
@@ -170,6 +250,7 @@ function startNextMemberWork(module, member) {
     agentId: member.agentId,
     requestedBy: work.requestedBy || null,
     requestId: work.requestId,
+    phase: work.phase || null,
     mode: module.mode,
   });
 
@@ -223,6 +304,7 @@ function createModuleAgent({ name, moduleId, role }) {
               sourceLanguage: event.payload?.sourceLanguage || null,
               corporateLanguage: event.payload?.corporateLanguage || "English",
               text: event.payload?.text || "",
+              phase: role === "Translator" ? "translation" : "analysis",
             };
             member.queue.push(work);
             if (!member.busy) startNextMemberWork(module, member);
