@@ -3,6 +3,7 @@ import { join, leave, resolveRuntime, runLoop, sendEvent } from "./network-runti
 
 const MODEL = "gpt-5.4-mini";
 const REAL_LLM_ENABLED = Boolean(process.env.OPENAI_API_KEY) && process.env.NETWORK_LLM !== "0";
+const INFERENCE_TIMEOUT_MS = Number(process.env.NETWORK_INFERENCE_TIMEOUT_MS || 12000);
 
 class EmployeeActionSpecification extends SituationSpecification {
   isSatisfiedBy({ event }) { return event.type === "employee.action"; }
@@ -141,6 +142,86 @@ function scheduleTeardownWhenIdle(moduleId) {
   module.teardownTimer = setTimeout(() => teardownModule(moduleId), 3500);
 }
 
+function clearInferenceTimer(member) {
+  if (!member?.inferenceTimer) return;
+  clearTimeout(member.inferenceTimer);
+  member.inferenceTimer = null;
+}
+
+function forceFallbackCompletion(module, member, work, mode = "fallback-timeout") {
+  clearInferenceTimer(member);
+  const state = resolveRuntime().state;
+  const request = ensureRequestRecord(module, work);
+  request.results[member.role] = {
+    text: fallbackResult(member.role, work),
+    mode,
+    completedAt: Date.now(),
+    agentId: member.agentId,
+  };
+  member.status = "done";
+  member.completedAt = Date.now();
+  member.busy = false;
+  member.currentWork = null;
+  state.log("module.done", `${member.role} completed with resilient fallback`, {
+    moduleId: module.id,
+    agentId: member.agentId,
+    requestId: work.requestId,
+    mode,
+  });
+
+  if (member.role === "Translator" && module.mode === "real-llm") {
+    for (const specialist of module.members) {
+      if (specialist.role === "Translator") continue;
+      if (specialist.currentWork?.requestId !== work.requestId || specialist.status !== "waiting") continue;
+      forceFallbackCompletion(module, specialist, specialist.currentWork, "fallback-translator-timeout");
+    }
+  }
+
+  startNextMemberWork(module, member);
+  scheduleTeardownWhenIdle(module.id);
+}
+
+function armInferenceTimeout(module, member, work) {
+  clearInferenceTimer(member);
+  member.inferenceTimer = setTimeout(() => {
+    const state = resolveRuntime().state;
+    const live = state.activeModules.get(module.id);
+    if (!live) return;
+    const current = live.members.find((item) => item.agentId === member.agentId);
+    if (!current?.busy || current.currentWork?.requestId !== work.requestId || current.currentWork?.phase !== work.phase) return;
+
+    current.timedOut = true;
+    state.log("module.timeout", `${current.role} exceeded ${INFERENCE_TIMEOUT_MS} ms and was quarantined`, {
+      moduleId: live.id,
+      agentId: current.agentId,
+      requestId: work.requestId,
+      phase: work.phase,
+    });
+    forceFallbackCompletion(live, current, work, "fallback-timeout");
+  }, INFERENCE_TIMEOUT_MS);
+}
+
+function runMemberInference(module, member, work) {
+  if (member.timedOut) {
+    forceFallbackCompletion(module, member, work, "fallback-quarantined-agent");
+    return;
+  }
+  try {
+    armInferenceTimeout(module, member, work);
+    runLoop(member.agentId, rolePrompt(member.role, work), inferenceInput(member.agent));
+  } catch (error) {
+    clearInferenceTimer(member);
+    member.timedOut = true;
+    resolveRuntime().state.log("module.error", `${member.role} inference failed; specialist quarantined and fallback used`, {
+      moduleId: module.id,
+      agentId: member.agentId,
+      requestId: work.requestId,
+      error: error?.message || String(error),
+    });
+    forceFallbackCompletion(module, member, work, "fallback-after-error");
+  }
+}
+
 function startCoordinatedFinal(module, member, request, baseWork) {
   if (!module || module.mode !== "real-llm" || member.role === "Translator") return false;
   const translator = request.results?.Translator?.text;
@@ -165,21 +246,12 @@ function startCoordinatedFinal(module, member, request, baseWork) {
     requestId: request.requestId,
   });
 
-  try {
-    runLoop(member.agentId, rolePrompt(member.role, work), inferenceInput(member.agent));
-  } catch (error) {
-    state.log("module.error", `${member.role} coordinated inference failed; fallback used`, {
-      moduleId: module.id,
-      agentId: member.agentId,
-      requestId: request.requestId,
-      error: error?.message || String(error),
-    });
-    completeMemberWork(module, member, work, fallbackResult(member.role, work), "fallback-after-error");
-  }
+  runMemberInference(module, member, work);
   return true;
 }
 
 function completeMemberWork(module, member, work, text, mode) {
+  clearInferenceTimer(member);
   const state = resolveRuntime().state;
   const request = ensureRequestRecord(module, work);
 
@@ -266,17 +338,7 @@ function startNextMemberWork(module, member) {
     return;
   }
 
-  try {
-    runLoop(member.agentId, rolePrompt(member.role, work), inferenceInput(member.agent));
-  } catch (error) {
-    state.log("module.error", `${member.role} inference failed; fallback used`, {
-      moduleId: module.id,
-      agentId: member.agentId,
-      requestId: work.requestId,
-      error: error?.message || String(error),
-    });
-    completeMemberWork(module, member, work, fallbackResult(member.role, work), "fallback-after-error");
-  }
+  runMemberInference(module, member, work);
 }
 
 function createModuleAgent({ name, moduleId, role }) {
@@ -320,7 +382,7 @@ function createModuleAgent({ name, moduleId, role }) {
             const module = state.activeModules.get(moduleId);
             if (!module) return;
             const member = module.members.find((item) => item.agentId === agent.getId());
-            if (!member?.busy || !member.currentWork) return;
+            if (!member?.busy || !member.currentWork || member.timedOut) return;
             const text = answerText(event.payload?.answer).trim();
             completeMemberWork(module, member, member.currentWork, text || fallbackResult(role, member.currentWork), text ? "real-llm" : "fallback-empty-answer");
           },
@@ -450,6 +512,8 @@ export function spawnCommunicationModule(sysadmin, request = {}) {
       busy: false,
       queue: [],
       currentWork: null,
+      inferenceTimer: null,
+      timedOut: false,
     })),
     agents,
     teardownTimer: null,
@@ -472,6 +536,7 @@ export function teardownModule(moduleId) {
   const module = state.activeModules.get(moduleId);
   if (!module) return false;
   if (module.teardownTimer) clearTimeout(module.teardownTimer);
+  for (const member of module.members) clearInferenceTimer(member);
   for (const agent of module.agents) leave(agent);
   state.activeModules.delete(moduleId);
   state.log("module.release", "Communication Module released after idle timeout", {
