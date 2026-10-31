@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "demo": "node src/demo.js",
-    "web": "node src/server.js"
+    "web": "node src/server.js",
+    "dynamic-test": "node src/dynamic-agent-smoke.js"
   },
   "engines": {
     "node": ">=24"
