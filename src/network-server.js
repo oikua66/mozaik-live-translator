@@ -34,9 +34,30 @@ resolveRuntime().state.log("system.start", "Sysadmin Agent is monitoring the cor
 });
 
 const initialEmployees = [
-  { id: "bvi-james", name: "James", office: "BVI Head Office", language: "English", role: "Operations Director" },
-  { id: "kyiv-olena", name: "Olena", office: "Kyiv Office", language: "Ukrainian", role: "Project Manager" },
-  { id: "novi-sad-marko", name: "Marko", office: "Novi Sad Office", language: "Serbian", role: "Engineer" },
+  {
+    id: "bvi-james",
+    name: "James",
+    office: "BVI Head Office",
+    language: "English",
+    role: "Operations Director",
+    sampleText: "Please send the revised contract to Kyiv before 4 PM and confirm when it is received.",
+  },
+  {
+    id: "kyiv-olena",
+    name: "Olena",
+    office: "Kyiv Office",
+    language: "Ukrainian",
+    role: "Project Manager",
+    sampleText: "Будь ласка, перевірте останню версію договору і повідомте, чи можемо ми підписати його сьогодні.",
+  },
+  {
+    id: "novi-sad-marko",
+    name: "Marko",
+    office: "Novi Sad Office",
+    language: "Serbian",
+    role: "Engineer",
+    sampleText: "Molim vas proverite tehničku specifikaciju i javite da li možemo da počnemo u ponedeljak.",
+  },
 ];
 const fourthEmployee = {
   id: "tel-aviv-sarah",
@@ -44,6 +65,7 @@ const fourthEmployee = {
   office: "Tel Aviv Office",
   language: "Hebrew",
   role: "Legal Counsel",
+  sampleText: "בבקשה בדקו את הנוסח האחרון ואשרו אם אפשר לשלוח אותו ללקוח היום.",
 };
 for (const profile of initialEmployees) registerEmployee(profile);
 
@@ -81,12 +103,31 @@ function snapshot() {
   const modules = [...state.activeModules.values()].map((module) => ({
     id: module.id,
     type: module.type,
+    mode: module.mode,
     requestedBy: module.requestedBy,
     createdAt: module.createdAt,
     lastRequestedAt: module.lastRequestedAt,
     requestCount: module.requestCount || 0,
     status: module.status,
-    members: module.members,
+    members: module.members.map((member) => ({
+      agentId: member.agentId,
+      role: member.role,
+      status: member.status,
+      busy: Boolean(member.busy),
+      queued: member.queue.length,
+      startedAt: member.startedAt || null,
+      completedAt: member.completedAt || null,
+    })),
+    requests: module.requests.map((request) => ({
+      requestId: request.requestId,
+      requestedBy: request.requestedBy,
+      requestedByName: request.requestedByName,
+      sourceLanguage: request.sourceLanguage,
+      corporateLanguage: request.corporateLanguage,
+      text: request.text,
+      createdAt: request.createdAt,
+      results: request.results,
+    })),
   }));
   const participants = state.getParticipants().map((participant) => ({
     id: participant.getId(),
@@ -124,15 +165,15 @@ async function runElasticScenario() {
 
   scenario.step = "james-request";
   triggerEmployeeAction(controller, "bvi-james");
-  await sleep(1100);
+  await sleep(1800);
 
   scenario.step = "olena-request";
   triggerEmployeeAction(controller, "kyiv-olena");
-  await sleep(1100);
+  await sleep(1800);
 
   scenario.step = "marko-request";
   triggerEmployeeAction(controller, "novi-sad-marko");
-  await sleep(4200);
+  await sleep(7000);
 
   scenario.step = "fourth-employee-joins";
   registerEmployee(fourthEmployee);
@@ -172,7 +213,7 @@ const server = http.createServer(async (req, res) => {
       const employeeId = String(body.employeeId || "");
       const state = resolveRuntime().state;
       if (!state.personalAgents.has(employeeId)) return json(res, 404, { error: "Employee agent is not active." });
-      triggerEmployeeAction(controller, employeeId);
+      triggerEmployeeAction(controller, employeeId, body.text ? String(body.text) : null);
       return json(res, 202, snapshot());
     }
 
@@ -194,6 +235,7 @@ const server = http.createServer(async (req, res) => {
         office: String(body.office || "Tel Aviv Office"),
         language: String(body.language || "Hebrew"),
         role: String(body.role || "Legal Counsel"),
+        sampleText: String(body.sampleText || "Please confirm the latest version."),
       };
       registerEmployee(profile);
       return json(res, 201, snapshot());
@@ -225,6 +267,8 @@ const server = http.createServer(async (req, res) => {
 });
 
 server.listen(PORT, () => {
+  const mode = process.env.OPENAI_API_KEY && process.env.NETWORK_LLM !== "0" ? "real LLM" : "fallback";
   console.log(`\n🏢 Corporate Agent Network demo: http://localhost:${PORT}`);
+  console.log(`Communication Module mode: ${mode}`);
   console.log("Existing translator remains unchanged at npm run web / port 3000.\n");
 });
