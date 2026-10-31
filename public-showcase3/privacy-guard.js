@@ -81,21 +81,28 @@ function resetLocalVoiceScope() {
 }
 
 function deriveScopedVoiceState(state) {
-  const fragments = Array.isArray(state?.fragments)
-    ? state.fragments.filter((fragment) => ownedVoiceFragmentIds.has(fragment.id))
-    : [];
+  const transition = Boolean(pendingVoiceConfig);
+  const fragments = transition
+    ? []
+    : Array.isArray(state?.fragments)
+      ? state.fragments.filter((fragment) => ownedVoiceFragmentIds.has(fragment.id))
+      : [];
+  const effectiveConfig = pendingVoiceConfig || {};
 
   return {
     ...state,
+    sourceLanguage: effectiveConfig.sourceLanguage || state.sourceLanguage,
+    targetLanguage: effectiveConfig.targetLanguage || state.targetLanguage,
+    outputStyle: effectiveConfig.outputStyle || state.outputStyle,
     fragments,
-    sourceBusy: fragments.some((fragment) => fragment.sttStatus === 'normalizing'),
-    translationBusy: fragments.some((fragment) => fragment.translationStatus === 'running'),
-    editBusy: fragments.some((fragment) => ['queued', 'running'].includes(fragment.editingStatus)),
-    voiceBusy: fragments.some((fragment) => ['queued', 'running'].includes(fragment.voiceStatus)),
-    sourceQueueLength: fragments.filter((fragment) => fragment.sttStatus === 'normalizing').length,
-    translationQueueLength: fragments.filter((fragment) => ['pending', 'running'].includes(fragment.translationStatus)).length,
-    editQueueLength: fragments.filter((fragment) => ['queued', 'running'].includes(fragment.editingStatus)).length,
-    voiceQueueLength: fragments.filter((fragment) => ['queued', 'running'].includes(fragment.voiceStatus)).length,
+    sourceBusy: transition ? false : fragments.some((fragment) => fragment.sttStatus === 'normalizing'),
+    translationBusy: transition ? false : fragments.some((fragment) => fragment.translationStatus === 'running'),
+    editBusy: transition ? false : fragments.some((fragment) => ['queued', 'running'].includes(fragment.editingStatus)),
+    voiceBusy: transition ? false : fragments.some((fragment) => ['queued', 'running'].includes(fragment.voiceStatus)),
+    sourceQueueLength: transition ? 0 : fragments.filter((fragment) => fragment.sttStatus === 'normalizing').length,
+    translationQueueLength: transition ? 0 : fragments.filter((fragment) => ['pending', 'running'].includes(fragment.translationStatus)).length,
+    editQueueLength: transition ? 0 : fragments.filter((fragment) => ['queued', 'running'].includes(fragment.editingStatus)).length,
+    voiceQueueLength: transition ? 0 : fragments.filter((fragment) => ['queued', 'running'].includes(fragment.voiceStatus)).length,
   };
 }
 
