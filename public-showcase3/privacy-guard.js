@@ -22,6 +22,7 @@ let pendingFinalPayload = null;
 let pendingFinalTimer = null;
 let recentSubmittedFinal = '';
 let recentSubmittedAt = 0;
+let micRestartBypass = false;
 
 function requestUrl(input) {
   if (typeof input === 'string') return input;
@@ -269,6 +270,43 @@ async function clearStaleServerVoiceStateOnLoad() {
   } catch (error) {
     console.warn('Could not clear stale voice state on page load:', error);
   }
+}
+
+// A manual microphone stop followed by Start is treated as a new spoken session.
+// Reuse the app's own Clear action so its private TTS cursor is reset as well as
+// the visible text and backend state. This prevents a new utterance from being
+// appended to the previous demo while preserving automatic mic resume after TTS.
+if (micButton) {
+  micButton.addEventListener('click', (event) => {
+    if (micRestartBypass) {
+      micRestartBypass = false;
+      return;
+    }
+    if (microphoneLooksActive()) return;
+
+    const original = document.querySelector('#originalText');
+    const hasPreviousSession = ownedVoiceFragmentIds.size > 0 || (original && !original.classList.contains('empty'));
+    if (!hasPreviousSession) return;
+
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const clearButton = document.querySelector('#clearButton');
+    if (!clearButton) return;
+
+    clearButton.click();
+    const waitForCleanStart = async () => {
+      const deadline = Date.now() + 7000;
+      while (Date.now() < deadline) {
+        const text = String(document.querySelector('#originalText')?.textContent || '');
+        const clean = !ownedVoiceFragmentIds.size && (/your speech will appear here/i.test(text) || document.querySelector('#originalText')?.classList.contains('empty'));
+        if (clean) break;
+        await new Promise((resolve) => setTimeout(resolve, 80));
+      }
+      micRestartBypass = true;
+      micButton.click();
+    };
+    waitForCleanStart();
+  }, true);
 }
 
 function injectLegalUi() {
