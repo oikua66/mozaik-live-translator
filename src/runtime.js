@@ -62,6 +62,7 @@ export const {
   initializeRuntime,
   resolveRuntime,
   join,
+  leave,
   sendEvent,
   runLoop,
 } = defineRuntime();
