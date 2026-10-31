@@ -6,66 +6,19 @@
 >
 > **Agents exist only when the company needs them.**
 
-Live product: **https://agents.koretskiy.com**  
-Render fallback: **https://mozaik-agent-network.onrender.com**
-
-## How to use the product
-
-The live product has two connected modes: **Architecture** and **Live Voice**.
-
-### 1. Architecture demo
-
-1. Open **https://agents.koretskiy.com** in Google Chrome.
-2. The first screen shows the current corporate AI workforce: one permanent Sysadmin Agent plus active Personal Employee Agents.
-3. Click **Run elastic workforce demo**.
-4. Watch the active-agent counter and lifecycle trace.
-5. A temporary **Communication Module** appears with three specialist agents.
-6. Watch the specialist agents work concurrently and coordinate through shared state.
-7. When the specialist work is complete, the temporary module is released automatically.
-8. The demo then shows an employee joining and two employees leaving, so the workforce expands and contracts dynamically.
-9. The expected lifecycle is:
-
-```text
-4 → 7 → 4 → 5 → 4 → 3
-```
-
-The **Sysadmin event stream** at the bottom shows the corresponding runtime events.
-
-### 2. Live Voice mode
-
-You can enter Live Voice at any time using **Live Voice** in the top bar, or use the **Enter Live Voice Mode** button after the architecture demo completes.
-
-1. Choose the **Input language**.
-2. Choose the **Output language**.
-3. Choose an output style: **Faithful**, **Polite & clean**, or **Business**.
-4. Choose a voice preference: **Auto**, **Female presentation**, **Male presentation**, or **Neutral presentation**.
-5. Keep **Voice output = Auto** if you want spoken AI output, or set it to **Off** for text-only output.
-6. Click **Start microphone**.
-7. Speak a short phrase normally.
-8. Watch the Source, Translator, Editor and Voice Writer agent statuses progress.
-9. Read the recognised original text, translation and generated voice script.
-10. If voice output is enabled, the AI-generated spoken version plays automatically.
-11. Use **Save voice MP3** if you want to save the generated spoken output.
-12. Use **Clear** to reset the current Live Voice session.
-
-Privacy behaviour is intentional: the microphone starts only after your click, stops after about 20 seconds of silence, stops when the page/window loses focus, and never resumes automatically.
-
-### Recommended browser
-
-**Google Chrome on desktop or Android.**
-
-The architecture demo works as a standard web interface, but Live Voice depends on browser speech-recognition and microphone behaviour, which are most reliable in Chrome.
+**Live product:** https://agents.koretskiy.com  
+**Render fallback:** https://mozaik-agent-network.onrender.com
 
 ## What it is
 
 Elastic Corporate Agent Network is a working multi-agent corporate runtime built on Mozaik.
 
-Instead of running one permanent chatbot with a collection of tools, the system creates and removes actual agents as the company changes and as temporary specialist work appears.
+Instead of one permanent chatbot with many tools, the system creates and removes actual agents as employees join or leave and as temporary specialist work appears.
 
-The final showcase contains two connected experiences inside one application:
+The final product has two connected modes:
 
-1. **Elastic workforce architecture demo** — personal employee agents join and leave dynamically, while temporary specialist teams are created on demand and released after the task is complete.
-2. **Live multi-agent voice communication** — a concrete Communication Module where translation, editorial work and natural spoken output are coordinated by multiple agents.
+1. **Architecture demo** — Personal Employee Agents join and leave dynamically, while a temporary specialist team is created on demand and released after the task is complete.
+2. **Live Voice** — a concrete Communication Module where several agents coordinate multilingual communication and spoken output.
 
 The voice workflow is one use case of the architecture, not the whole product.
 
@@ -73,26 +26,32 @@ The voice workflow is one use case of the architecture, not the whole product.
 
 A real company does not need every AI specialist active all the time.
 
-An employee may need translation now, legal review later, planning tomorrow, and no specialist module at all for the rest of the day. A fixed fleet wastes resources and does not reflect the organisation's actual state.
+An employee may need translation now, legal review later, planning tomorrow, and no specialist module for the rest of the day. This project models AI capacity as an **elastic workforce**:
 
-This project models AI capacity as an **elastic workforce**:
-
-- a permanent **Sysadmin Agent** monitors the network;
-- each active employee can have a **Personal Agent**;
+- one permanent **Sysadmin Agent** monitors the network;
+- active employees have **Personal Agents**;
 - employee agents can join and leave at runtime;
 - business needs trigger temporary specialist modules;
 - specialist agents coordinate through shared runtime state;
 - finished modules are torn down automatically.
 
-This architecture can later support Communication, Legal, Meeting, Planner, Protocol, Document, Compliance and Negotiation modules without changing the core lifecycle model.
+The same lifecycle can later support Legal, Meeting, Planner, Protocol, Document, Compliance and Negotiation modules.
 
-## Main demo
+## How to use the product
 
-The architecture scenario starts with three employees plus the permanent Sysadmin Agent.
+The live product is optimized for **Google Chrome on desktop and Android**.
 
-A communication request triggers a temporary three-agent specialist module. After the work is complete, the module disappears. A fourth employee then joins, and two employees later leave.
+### 1. Architecture demo
 
-The visible lifecycle is:
+1. Open https://agents.koretskiy.com.
+2. The first screen shows one permanent Sysadmin Agent and three Personal Employee Agents.
+3. Click **Run elastic workforce demo**.
+4. Watch the active-agent counter, lifecycle trace and Sysadmin event stream.
+5. A temporary **Communication Module** appears with three specialist agents.
+6. The specialists work concurrently and coordinate through shared state.
+7. When the work is complete, the temporary module is released automatically.
+8. A fourth employee joins, then two employees leave.
+9. Confirm the lifecycle trace:
 
 ```text
 4 → 7 → 4 → 5 → 4 → 3
@@ -114,7 +73,21 @@ James leaves
 Marko leaves
 ```
 
-The UI shows the active-agent count, workforce composition, module lifecycle and Sysadmin event stream while the topology changes.
+### 2. Live Voice
+
+Enter Live Voice from the top bar, or use **Enter Live Voice Mode** after the architecture demo.
+
+1. Choose **Input language** and **Output language**.
+2. Choose output style: **Faithful**, **Polite & clean**, or **Business**.
+3. Choose voice preference: **Auto**, **Female**, **Male**, or **Neutral presentation**.
+4. Keep **Voice output = Auto** for spoken output, or choose **Off** for text only.
+5. Click **Start microphone** and speak a short phrase.
+6. Watch Source, Translator, Editor and Voice Writer agent statuses.
+7. Read the recognised original, translation and generated voice script.
+8. Hear the AI-generated voice output or use **Save voice MP3**.
+9. Use **Clear** to reset the current voice session.
+
+Privacy behaviour is intentional: the microphone starts only after a click, stops after about 20 seconds of silence, stops when the page/window loses focus, and never resumes automatically.
 
 ## Architecture
 
@@ -136,24 +109,24 @@ flowchart LR
     VW --> RS
     RS --> PA
 
-    DONE{Work finished?} -->|Yes| RELEASE[Release specialist agents]
-    RS --> DONE
+    RS --> DONE{Work finished?}
+    DONE -->|Yes| RELEASE[Release specialist agents]
 ```
 
 ## Why this is genuinely multi-agent and concurrent
 
-The hackathon requirement is not satisfied by one chatbot calling multiple tools. This project uses multiple Mozaik agents with separate identities, lifecycle and shared state.
+The hackathon requirement is not satisfied by one chatbot calling several tools. This project uses multiple Mozaik agents with separate identities, lifecycle and shared state.
 
 During a Communication Module request:
 
 1. **Translator Agent** begins producing the translation.
 2. **Editor Agent** and **Voice Writer Agent** perform parallel pre-analysis while translation is in progress.
 3. Translator output is written into shared request state.
-4. Editor and Voice Writer consume that shared draft and complete their coordinated final passes.
+4. Editor and Voice Writer consume that shared draft and complete coordinated final passes.
 5. Results are written back to shared state for the requesting employee agent.
 6. When the module becomes idle, the temporary agents are removed.
 
-So the coordination pattern is:
+Coordination pattern:
 
 ```text
 parallel analysis
@@ -163,13 +136,9 @@ shared state
 coordinated final outputs
 ```
 
-The system also experimentally validates that agents created **after runtime start** can join, receive Semantic Events, perform real model inference, leave the runtime, and later be replaced by fresh agent instances.
+The repository also validates that agents created **after runtime start** can join, receive Semantic Events, perform real model inference, leave the runtime, and later be replaced by fresh agent instances.
 
 ## Mozaik concepts used
-
-The project uses Mozaik as the core runtime rather than as a thin wrapper around a single model call.
-
-Key concepts used in the implementation:
 
 - dynamic `createAgent(...)`
 - runtime `join(...)` and `leave(...)`
@@ -181,9 +150,7 @@ Key concepts used in the implementation:
 - dynamic agent inference after runtime start
 - Mozaik Cloud observability
 
-## Live Voice Mode
-
-The same hosted product includes a live multilingual Communication Module.
+## Live Voice implementation
 
 Supported languages:
 
@@ -192,7 +159,7 @@ Supported languages:
 - Ukrainian
 - Russian
 
-The flow is:
+Flow:
 
 ```text
 Microphone
@@ -210,59 +177,29 @@ Voice Writer Agent
 OpenAI AI speech output
 ```
 
-The interface shows:
+The UI shows original text, translation, agent status, voice script, latency, AI voice playback and downloadable MP3 output.
 
-- live original text;
-- translated output;
-- agent status;
-- voice script;
-- latency;
-- AI voice playback;
-- downloadable MP3 output.
+Voice preference is stored as a communication presentation preference rather than an employee gender attribute.
 
-### Voice preference
+## Privacy and resilience
 
-Employee and user profiles can include a communication **voice preference** such as male, female or neutral presentation.
+Live Voice uses a privacy-first microphone policy:
 
-This is intentionally a presentation preference rather than a stored employee gender attribute.
+- explicit user start;
+- visible `MIC LIVE`, `MIC PAUSED` and `MIC OFF` states;
+- automatic stop after about 20 seconds of silence;
+- stop on hidden page, lost window focus or page exit;
+- no automatic resume.
 
-## Privacy behaviour in Live Voice
+The public demo does not use an application database to permanently store Live Voice transcripts. Working state and generated-audio cache are held in server memory.
 
-The demo uses an explicit privacy-first microphone policy:
-
-- the microphone starts only after a user action;
-- a clear indicator shows `MIC LIVE`, `MIC PAUSED` or `MIC OFF`;
-- the microphone automatically stops after about 20 seconds of silence;
-- it stops when the page is hidden;
-- it stops when the browser window loses focus;
-- it stops when the user leaves the page;
-- it **never automatically resumes** after focus returns.
-
-Chrome is used for speech recognition. Spoken output is generated through OpenAI TTS.
-
-The public demo does not use an application database to permanently store Live Voice transcripts. Working state and generated-audio cache are held in server memory and disappear when the process restarts.
-
-See the hosted **Privacy Policy** and **Terms of Use** for the public demo.
-
-## Resilience
-
-Temporary specialists have bounded model-call time.
-
-Each real LLM specialist pass has a timeout. If a specialist times out:
-
-- it is marked timed out / quarantined for the current module;
-- the current task falls back instead of blocking the whole workflow;
-- remaining work can continue;
-- late model answers are ignored;
-- timers are cleared when the module is torn down.
-
-This keeps one slow specialist from freezing the full corporate network demo.
+Temporary specialist model calls are bounded by timeout. If a specialist times out, it is quarantined for that module, fallback output is used, late answers are ignored, and the rest of the workflow can continue.
 
 ## Real LLM and fallback mode
 
 If `OPENAI_API_KEY` is available and `NETWORK_LLM` is not set to `0`, the Communication Module uses real model inference.
 
-Without an API key, the architecture can still run in fallback mode so the lifecycle and coordination mechanics remain demonstrable.
+Without an API key, the architecture can still run in fallback mode so lifecycle and coordination mechanics remain demonstrable.
 
 AI speech output requires `OPENAI_API_KEY`.
 
@@ -290,18 +227,16 @@ The server also honours the hosting provider's `PORT` environment variable.
 
 Do not commit API keys to the repository.
 
-## Production-style hosted run
+## Hosted deployment
 
-The final showcase is designed to run as a **persistent single Node.js process** because the Mozaik runtime and current shared state live in memory.
-
-Current hosted deployment:
+The final showcase runs as a **persistent single Node.js process** because the Mozaik runtime and current shared state live in memory.
 
 ```text
 Render Web Service
-Runtime: Node.js
-Build:   npm install
-Start:   npm start
-Region:  Frankfurt
+Runtime:   Node.js
+Build:     npm install
+Start:     npm start
+Region:    Frankfurt
 Instances: 1
 ```
 
@@ -312,64 +247,25 @@ Health endpoints:
 /healthz
 ```
 
-Example response includes service status, uptime and whether OpenAI is configured.
-
-## Browser support
-
-**Optimized for Google Chrome on desktop and Android.**
-
-The architecture interface itself is standard responsive web UI. Live Voice depends on browser speech-recognition and microphone behaviour, which are most reliable in Chrome. Other browsers may have limited or unavailable speech recognition.
-
-## Demo flow for judges
-
-Recommended path:
-
-1. Open the live product.
-2. Note the initial active-agent count: Sysadmin + three employee agents.
-3. Click **Run elastic workforce demo**.
-4. Watch the Communication Module appear with three temporary specialists.
-5. Observe concurrent specialist activity and shared-state coordination.
-6. Watch the specialist module disappear after completion.
-7. Watch Sarah join from Tel Aviv.
-8. Watch James and Marko leave and capacity contract automatically.
-9. Confirm the lifecycle trace `4 → 7 → 4 → 5 → 4 → 3`.
-10. Enter **Live Voice Mode**.
-11. Choose source/target languages and voice preference.
-12. Start the microphone and speak one phrase.
-13. Watch Source, Translator, Editor and Voice Writer agents progress.
-14. Hear the AI-generated spoken output or save it as MP3.
-15. Switch away from the tab/window and confirm the microphone stops automatically for privacy.
-
 ## Smoke tests
-
-The repository includes focused tests for the dynamic behaviour that the final product relies on.
-
-### Dynamic join and event delivery
 
 ```bash
 npm run dynamic-test
 ```
-
 Validates that an employee agent created after runtime start can join and receive Semantic Events.
-
-### Full lifecycle
 
 ```bash
 npm run lifecycle-test
 ```
-
 Validates:
 
 ```text
 create → join → receive → leave → ignore later event → recreate → join → receive
 ```
 
-### Dynamic real inference
-
 ```bash
 npm run inference-test
 ```
-
 Validates that a dynamically created agent can join an already running Mozaik runtime, perform real model inference, and then be removed.
 
 ## Available scripts
@@ -410,46 +306,13 @@ public-showcase3/
   contact.html              Contact page
 ```
 
-## Product idea beyond the hackathon
-
-The Communication Module demonstrates the pattern with multilingual communication, but the architecture is designed to extend to other temporary specialist teams.
-
-For example:
-
-```text
-Employee request
-      ↓
-Personal Agent
-      ↓
-Sysadmin detects capability requirement
-      ↓
-Agent Factory / lifecycle service
-      ↓
-Legal Module
- ├─ Contract Analyst
- ├─ Risk / Compliance Agent
- └─ Legal Editor
-      ↓
-Shared state
-      ↓
-Reviewed result returned to employee
-      ↓
-Legal Module released
-```
-
-The same lifecycle can support meetings, planning, document processing, compliance or negotiation while preserving the central idea:
-
-> **AI capacity follows the organisation's actual needs instead of remaining permanently allocated.**
-
 ## Legal and contact
 
 Public demo pages:
 
-- `/terms.html`
-- `/privacy.html`
-- `/contact.html`
-
-Contact:
+- https://agents.koretskiy.com/terms.html
+- https://agents.koretskiy.com/privacy.html
+- https://agents.koretskiy.com/contact.html
 
 **Oleksandr Koretskiy**  
 Koretskiy Consulting  
