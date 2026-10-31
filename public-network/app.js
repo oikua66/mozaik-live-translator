@@ -74,6 +74,10 @@ function renderEmployees(state) {
 
 function renderRequest(request) {
   const resultOrder = ['Translator', 'Editor', 'Voice Writer'];
+  const analysisReady = ['Editor', 'Voice Writer'].filter((role) => request.analyses?.[role]).length;
+  const translatorReady = Boolean(request.results?.Translator);
+  const coordinatedReady = Boolean(request.results?.Editor) && Boolean(request.results?.['Voice Writer']);
+
   return `
     <div class="requestcard">
       <div class="requesthead">
@@ -81,6 +85,13 @@ function renderRequest(request) {
         <span>${escapeHtml(request.sourceLanguage || '')} → ${escapeHtml(request.corporateLanguage || 'English')}</span>
       </div>
       <div class="source-message">${escapeHtml(request.text || '')}</div>
+      <div class="coordination-strip">
+        <span class="coordstep ${analysisReady ? 'ready' : ''}">1. Parallel analysis ${analysisReady ? `(${analysisReady}/2)` : ''}</span>
+        <span>→</span>
+        <span class="coordstep ${translatorReady ? 'ready' : ''}">2. Translator → shared state</span>
+        <span>→</span>
+        <span class="coordstep ${coordinatedReady ? 'ready' : ''}">3. Coordinated outputs</span>
+      </div>
       <div class="resultlist">
         ${resultOrder.map((role) => {
           const result = request.results?.[role];
@@ -106,8 +117,7 @@ function renderModules(state) {
 
   modulesEl.className = 'cards';
   modulesEl.innerHTML = state.modules.map((module) => {
-    const running = module.members.filter((member) => member.status === 'running').length;
-    const allRunning = running > 1;
+    const activeParallel = module.members.filter((member) => ['running', 'waiting', 'coordinating'].includes(member.status)).length;
     const modeLabel = module.mode === 'real-llm' ? 'REAL LLM' : 'FALLBACK';
     const recentRequests = [...(module.requests || [])].slice(-3).reverse();
     return `
@@ -120,7 +130,7 @@ function renderModules(state) {
           <small>${escapeHtml(module.id)} · requests served: ${module.requestCount || 0}</small>
           <span class="pill mode ${module.mode === 'real-llm' ? 'real' : 'fallback'}">${modeLabel}</span>
         </div>
-        <div class="module-note">${allRunning ? '⚡ Multiple specialist agents running concurrently' : 'Shared-state specialist team'}</div>
+        <div class="module-note">⚡ Parallel analysis → shared state → coordinated outputs</div>
         <div class="memberlist">
           ${module.members.map((member) => `
             <div>
@@ -136,12 +146,12 @@ function renderModules(state) {
     `;
   }).join('');
 
-  const runningSpecialists = state.modules.flatMap((module) => module.members)
-    .filter((member) => member.status === 'running').length;
-  parallelStatus.textContent = runningSpecialists > 1
-    ? `${runningSpecialists} specialist agents running in parallel`
-    : runningSpecialists === 1
-      ? '1 specialist agent running'
+  const activeSpecialists = state.modules.flatMap((module) => module.members)
+    .filter((member) => ['running', 'waiting', 'coordinating'].includes(member.status)).length;
+  parallelStatus.textContent = activeSpecialists > 1
+    ? `${activeSpecialists} specialist agents coordinating concurrently`
+    : activeSpecialists === 1
+      ? '1 specialist agent active'
       : 'Specialist module active';
 }
 
