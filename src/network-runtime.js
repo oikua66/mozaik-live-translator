@@ -30,4 +30,5 @@ export const {
   join,
   leave,
   sendEvent,
+  runLoop,
 } = defineRuntime();
