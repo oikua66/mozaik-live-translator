@@ -9,7 +9,8 @@
     "dynamic-test": "node src/dynamic-agent-smoke.js",
     "lifecycle-test": "node src/dynamic-agent-lifecycle-smoke.js",
     "inference-test": "node src/dynamic-agent-inference-smoke.js",
-    "network-demo": "node src/network-server.js"
+    "network-demo": "node src/network-server.js",
+    "showcase": "node src/showcase.js"
   },
   "engines": {
     "node": ">=24"
