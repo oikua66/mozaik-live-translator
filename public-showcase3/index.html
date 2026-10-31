@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Corporate Agent Network Showcase</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div id="architectureView" class="view active">
+    <main class="shell">
+      <header class="hero">
+        <div>
+          <div class="eyebrow">Mozaik Freestyle 2026 · Elastic Agent Workforce</div>
+          <h1>Corporate Agent Network</h1>
+          <p>Personal agents follow active employees. Specialist agents are created on demand, coordinate through shared state, and disappear when the task is done.</p>
+        </div>
+        <div class="counter"><span>Active agents</span><strong id="activeAgents">—</strong></div>
+      </header>
+
+      <section class="lifecycle">
+        <div><span>Elastic lifecycle</span><strong id="lifecycleTrace">—</strong></div>
+        <div><span>Current phase</span><strong id="phaseLabel">IDLE</strong></div>
+        <div><span>Module lifecycle</span><strong id="moduleLifecycle">READY</strong></div>
+      </section>
+
+      <section class="stats">
+        <article><span>Sysadmin</span><strong>1</strong><small>permanent · monitoring</small></article>
+        <article><span>Personal agents</span><strong id="personalCount">—</strong><small>elastic · active employees</small></article>
+        <article><span>Specialist agents</span><strong id="specialistCount">—</strong><small>temporary · on demand</small></article>
+      </section>
+
+      <section class="controls demo-controls">
+        <button id="scenarioButton" class="primary" type="button">▶ Run elastic workforce demo</button>
+        <div>Scenario: <strong id="scenarioStatus">idle</strong></div>
+        <div class="parallel-state"><span class="parallel-dot"></span><strong id="parallelStatus">No specialist work</strong></div>
+      </section>
+
+      <section id="liveHandoff" class="live-handoff" hidden>
+        <div>
+          <span class="handoff-label">Architecture proven</span>
+          <strong>Switch to a live communication use case.</strong>
+          <p>The next screen uses the original voice backend unchanged.</p>
+        </div>
+        <button id="enterLiveButton" class="live-button" type="button">🎙 Enter Live Voice Mode</button>
+      </section>
+
+      <section class="controls">
+        <label>Manual employee action<select id="employeeSelect"></select></label>
+        <button id="actionButton" class="primary" type="button">Trigger multilingual task</button>
+        <button id="joinButton" type="button">+ Join fourth employee</button>
+        <button id="leaveButton" type="button">− Two employees leave</button>
+      </section>
+
+      <section class="grid">
+        <article class="panel">
+          <div class="panelhead"><h2>Personal employee agents</h2><span>dynamic membership</span></div>
+          <div id="employees" class="cards"></div>
+        </article>
+        <article class="panel">
+          <div class="panelhead"><h2>On-demand modules</h2><span>temporary specialists</span></div>
+          <div id="modules" class="cards empty">No specialist module is active.</div>
+        </article>
+      </section>
+
+      <section class="panel logpanel">
+        <div class="panelhead"><h2>Sysadmin event stream</h2><span id="sysadminStatus">monitoring</span></div>
+        <div id="eventLog" class="eventlog"></div>
+      </section>
+    </main>
+  </div>
+
+  <div id="voiceView" class="view">
+    <main class="shell">
+      <div class="modebar"><button id="backButton" type="button">← Back to architecture</button><span>Live Voice Mode · original backend on port 3000</span></div>
+      <header class="hero">
+        <div>
+          <div class="eyebrow">Live communication module</div>
+          <h1>Live Multi-Agent Translator</h1>
+          <p>Speak freely. Four agents coordinate in parallel: source cleanup, translation, factual editing, and a dedicated spoken script.</p>
+        </div>
+        <button id="micButton" class="mic" type="button">🎙 Start microphone</button>
+      </header>
+
+      <section class="controls">
+        <label>Input language<select id="sourceLanguage"><option value="ru" selected>Russian</option><option value="uk">Ukrainian</option><option value="sr">Serbian</option><option value="en">English</option></select></label>
+        <label>Output language<select id="targetLanguage"><option value="en" selected>English</option><option value="sr">Serbian</option><option value="uk">Ukrainian</option><option value="ru">Russian</option></select></label>
+        <label>Output style<select id="outputStyle"><option value="faithful">Faithful</option><option value="polite" selected>Polite &amp; clean</option><option value="business">Business</option></select></label>
+        <label>Voice output<select id="voiceOutput"><option value="auto" selected>Auto</option><option value="off">Off</option></select></label>
+        <button id="clearButton" type="button">Clear</button>
+      </section>
+
+      <section class="agentbar">
+        <div class="agent"><span id="inputDot" class="dot idle"></span><strong>Source Agent</strong><span id="inputStatus">idle</span></div>
+        <div class="agent"><span id="translatorDot" class="dot idle"></span><strong>Translator Agent</strong><span id="translatorStatus">idle</span></div>
+        <div class="agent"><span id="editorDot" class="dot idle"></span><strong>Editor Agent</strong><span id="editorStatus">idle</span></div>
+        <div class="agent"><span id="voiceWriterDot" class="dot idle"></span><strong>Voice Writer</strong><span id="voiceWriterStatus">idle</span></div>
+      </section>
+      <div id="latencyLine" class="latency">Latency: waiting for speech…</div>
+
+      <section class="workspace">
+        <article class="panel"><div class="panelhead"><h2>Original</h2><span id="listeningBadge">Ready</span></div><div id="originalText" class="textstream empty">Your speech will appear here.</div><div id="interimText" class="interim"></div></article>
+        <article class="panel"><div class="panelhead"><h2>Translation</h2><button id="copyButton" class="linkbutton" type="button">Copy</button></div><div id="translatedText" class="textstream empty">The translation will appear here.</div></article>
+      </section>
+
+      <section class="panel voicepanel">
+        <div class="panelhead"><div><h2>Voice script</h2><span>Generated by Voice Writer Agent for natural spoken delivery</span></div><button id="saveVoiceButton" type="button" disabled>Save voice MP3</button></div>
+        <div id="voiceScriptText" class="voice-script empty">The spoken version will appear here after verification.</div>
+      </section>
+      <p id="notice" class="notice">Chrome is recommended for microphone speech recognition.</p>
+    </main>
+  </div>
+
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
