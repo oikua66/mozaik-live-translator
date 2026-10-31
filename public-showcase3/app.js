@@ -27,6 +27,19 @@ function escapeHtml(value) {
     .replaceAll('"', '&quot;').replaceAll("'", '&#039;');
 }
 
+function officeVisual(employee) {
+  const id = String(employee.id || '').toLowerCase();
+  const office = String(employee.office || '').toLowerCase();
+  if (id.includes('kyiv') || office.includes('kyiv')) return { className: 'ukraine', flag: '🇺🇦' };
+  if (id.includes('novi') || office.includes('novi')) return { className: 'serbia', flag: '🇷🇸' };
+  if (id.includes('tel') || office.includes('tel aviv')) return { className: 'israel', flag: '🇮🇱' };
+  return { className: 'bvi', flag: '🌐' };
+}
+
+function initials(name) {
+  return String(name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
+}
+
 // ---------- Architecture view ----------
 const activeAgents = document.querySelector('#activeAgents');
 const personalCount = document.querySelector('#personalCount');
@@ -53,13 +66,23 @@ let scenarioWasRunning = false;
 
 function renderEmployees(state) {
   const active = state.employees.filter((item) => item.active);
-  employeesEl.innerHTML = active.length ? active.map((employee) => `
-    <div class="agentcard personal-agent">
-      <div class="agenttop"><strong>${escapeHtml(employee.name)}</strong><span class="pill active-pill">PERSONAL · ACTIVE</span></div>
-      <div>${escapeHtml(employee.office)}</div>
-      <small>${escapeHtml(employee.language)} · ${escapeHtml(employee.role)}</small>
-      <code>${escapeHtml(employee.agentId || 'no agent')}</code>
-    </div>`).join('') : '<div class="empty">No employee agents are active.</div>';
+  employeesEl.innerHTML = active.length ? active.map((employee) => {
+    const visual = officeVisual(employee);
+    return `
+      <div class="agentcard personal-agent">
+        <div class="employee-main">
+          <div class="avatar ${visual.className}">${escapeHtml(initials(employee.name))}</div>
+          <div class="employee-info">
+            <strong>${escapeHtml(employee.name)}</strong>
+            <span>${escapeHtml(employee.office)}</span>
+            <small>${escapeHtml(employee.language)} · ${escapeHtml(employee.role)}</small>
+          </div>
+          <span class="office-flag" aria-hidden="true">${visual.flag}</span>
+        </div>
+        <div class="agenttop" style="margin-top:10px"><span class="pill active-pill">PERSONAL · ACTIVE</span></div>
+        <code class="agent-id">${escapeHtml(employee.agentId || 'no agent')}</code>
+      </div>`;
+  }).join('') : '<div class="empty">No employee agents are active.</div>';
 
   const signature = active.map((e) => `${e.id}:${e.name}:${e.office}`).join('|');
   if (signature !== employeeOptionsSignature) {
@@ -76,7 +99,7 @@ function renderRequest(request) {
   return `<div class="requestcard">
     <div class="requesthead"><strong>${escapeHtml(request.requestedByName || request.requestedBy || 'employee')}</strong><span>${escapeHtml(request.sourceLanguage || '')} → ${escapeHtml(request.corporateLanguage || 'English')}</span></div>
     <div class="source-message">${escapeHtml(request.text || '')}</div>
-    <div class="coordination-strip"><span>Parallel analysis</span><b>→</b><span>shared state</span><b>→</b><span>coordinated outputs</span></div>
+    <div class="coordination-strip"><span>Parallel analysis</span><b>→</b><span>Shared state</span><b>→</b><span>Coordinated outputs</span></div>
     <div class="resultlist">${order.map((role) => `<div class="resultrow"><span>${role}</span><div>${request.results?.[role] ? escapeHtml(request.results[role].text) : '<em>working…</em>'}</div></div>`).join('')}</div>
   </div>`;
 }
@@ -84,17 +107,17 @@ function renderRequest(request) {
 function renderModules(state) {
   if (!state.modules.length) {
     modulesEl.className = 'cards empty';
-    modulesEl.textContent = 'No specialist module is active.';
+    modulesEl.innerHTML = '<div style="padding:22px 4px">No specialist module is active.<br><small>Run the demo to watch temporary agents appear.</small></div>';
     parallelStatus.textContent = 'No specialist work';
     return;
   }
   modulesEl.className = 'cards';
   modulesEl.innerHTML = state.modules.map((module) => `
     <div class="modulecard specialist-module">
-      <div class="agenttop"><strong>${escapeHtml(module.type)}</strong><span class="pill module-pill">TEMPORARY · ON DEMAND</span></div>
+      <div class="agenttop"><strong>⚡ ${escapeHtml(module.type)}</strong><span class="pill module-pill">TEMPORARY · ON DEMAND</span></div>
       <div class="modulemeta"><small>${escapeHtml(module.id)} · requests served: ${module.requestCount || 0}</small><span class="pill ${module.mode === 'real-llm' ? 'real-pill' : 'fallback-pill'}">${module.mode === 'real-llm' ? 'REAL LLM' : 'FALLBACK'}</span></div>
-      <div class="module-note">⚡ Parallel analysis → shared state → coordinated outputs</div>
-      <div class="memberlist">${module.members.map((m) => `<div><span>${escapeHtml(m.role)}<code>${escapeHtml(m.agentId || '')}</code></span><strong class="memberstatus ${escapeHtml(m.status)}">${escapeHtml(m.status)}</strong></div>`).join('')}</div>
+      <div class="module-note">Parallel analysis → shared state → coordinated outputs</div>
+      <div class="memberlist">${module.members.map((m) => `<div><span><strong>${escapeHtml(m.role)}</strong><code>${escapeHtml(m.agentId || '')}</code></span><strong class="memberstatus ${escapeHtml(m.status)}">${escapeHtml(m.status)}</strong></div>`).join('')}</div>
       <div class="requestlist">${[...(module.requests || [])].slice(-3).reverse().map(renderRequest).join('')}</div>
     </div>`).join('');
   const n = state.modules.flatMap((m) => m.members).filter((m) => ['running', 'waiting', 'coordinating'].includes(m.status)).length;
@@ -144,6 +167,10 @@ actionButton.addEventListener('click', async () => {
 joinButton.addEventListener('click', async () => { await jsonApi('/network-api/scenario/join-fourth', { method: 'POST', body: '{}' }); await refreshNetwork(); });
 leaveButton.addEventListener('click', async () => { await jsonApi('/network-api/scenario/two-leave', { method: 'POST', body: '{}' }); await refreshNetwork(); });
 
+// Collapse the event stream by default on narrow screens.
+const logDetails = document.querySelector('.log-details');
+if (window.matchMedia('(max-width: 760px)').matches && logDetails) logDetails.removeAttribute('open');
+
 // ---------- Voice view ----------
 const sourceLanguage = document.querySelector('#sourceLanguage');
 const targetLanguage = document.querySelector('#targetLanguage');
@@ -182,6 +209,11 @@ let lastSpokenFragmentId = 0;
 const recognitionLang = { ru: 'ru-RU', uk: 'uk-UA', sr: 'sr-RS', en: 'en-US' };
 const speechLang = { ru: 'ru-RU', uk: 'uk-UA', sr: 'sr-RS', en: 'en-US' };
 
+function setMicLabel(active) {
+  micButton.innerHTML = active
+    ? '<span class="mic-orb">■</span><span>Stop microphone</span>'
+    : '<span class="mic-orb">🎙</span><span>Start microphone</span>';
+}
 function setStatus(el, dot, value) {
   el.textContent = value;
   dot.className = `dot ${value === 'running' || value === 'listening' ? 'running' : value === 'queued' ? 'queued' : 'idle'}`;
@@ -217,7 +249,7 @@ function startTtsNow() {
   const utterance = new SpeechSynthesisUtterance(batch.text);
   utterance.lang = speechLang[targetLanguage.value] || 'en-US';
   const voice = pickVoice(utterance.lang); if (voice) utterance.voice = voice;
-  utterance.onstart = () => { lastSpokenFragmentId = batch.lastId; listeningBadge.textContent = 'Speaking'; notice.textContent = 'Speaking the Voice Writer script.'; };
+  utterance.onstart = () => { lastSpokenFragmentId = batch.lastId; listeningBadge.textContent = 'Speaking'; notice.textContent = 'Voice Writer output is playing.'; };
   utterance.onend = () => { ttsPlaying = false; listeningBadge.textContent = listening ? 'Listening' : 'Ready'; restartRecognition(); requestTts(); };
   utterance.onerror = () => { ttsPlaying = false; restartRecognition(); };
   speechSynthesisApi.cancel();
@@ -241,6 +273,9 @@ function renderVoice(state) {
   originalText.textContent = source || 'Your speech will appear here.';
   translatedText.textContent = translated || (isSmartStyle() ? 'Waiting for the editor-verified translation…' : 'The translation will appear here.');
   voiceScriptText.textContent = voiceScript || 'The spoken version will appear here after verification.';
+  originalText.classList.toggle('empty', !source);
+  translatedText.classList.toggle('empty', !translated);
+  voiceScriptText.classList.toggle('empty', !voiceScript);
   saveVoiceButton.disabled = !voiceScript;
   setStatus(inputStatus, inputDot, state.sourceBusy ? 'running' : state.sourceQueueLength ? 'queued' : listening ? 'listening' : 'idle');
   setStatus(translatorStatus, translatorDot, state.translationBusy ? 'running' : state.translationQueueLength ? 'queued' : 'idle');
@@ -266,10 +301,10 @@ async function sendFragment(text) {
 function stopRecognition() {
   listening = false; userSpeaking = false; ttsWaitingForMicStop = false;
   if (recognition) { try { recognition.abort(); } catch {} }
-  recognitionActive = false; cancelTts(); micButton.textContent = '🎙 Start microphone'; listeningBadge.textContent = 'Ready'; interimText.textContent = '';
+  recognitionActive = false; cancelTts(); setMicLabel(false); listeningBadge.textContent = 'Ready'; interimText.textContent = '';
 }
 function startRecognition() {
-  if (!SpeechRecognition) { notice.textContent = 'Chrome is required for microphone speech recognition.'; return; }
+  if (!SpeechRecognition) { notice.textContent = 'Google Chrome is required for the microphone speech-recognition demo.'; return; }
   recognition = new SpeechRecognition();
   recognition.lang = recognitionLang[sourceLanguage.value];
   recognition.continuous = true;
@@ -296,7 +331,7 @@ function startRecognition() {
     if (ttsWaitingForMicStop) { ttsWaitingForMicStop = false; setTimeout(startTtsNow, 50); return; }
     restartRecognition();
   };
-  listening = true; micButton.textContent = '■ Stop microphone'; listeningBadge.textContent = 'Listening'; notice.textContent = 'Speak naturally. The original voice backend is processing the fragment.'; recognition.start();
+  listening = true; setMicLabel(true); listeningBadge.textContent = 'Listening'; notice.textContent = 'Speak naturally. Four cooperating agents will process each final speech fragment.'; recognition.start();
 }
 
 micButton.addEventListener('click', () => listening ? stopRecognition() : startRecognition());
@@ -309,12 +344,13 @@ sourceLanguage.addEventListener('change', updateConfig);
 targetLanguage.addEventListener('change', updateConfig);
 outputStyle.addEventListener('change', updateConfig);
 clearButton.addEventListener('click', async () => { if (listening) stopRecognition(); cancelTts(); renderVoice(await jsonApi('/voice-api/clear', { method: 'POST', body: JSON.stringify({ sourceLanguage: sourceLanguage.value, targetLanguage: targetLanguage.value, outputStyle: outputStyle.value }) })); lastSpokenFragmentId = 0; });
-copyButton.addEventListener('click', async () => { const text = currentOutputText(); if (text) await navigator.clipboard.writeText(text); });
+copyButton.addEventListener('click', async () => { const text = currentOutputText(); if (text) { await navigator.clipboard.writeText(text); notice.textContent = 'Translation copied.'; } });
 saveVoiceButton.addEventListener('click', async () => {
   const text = currentVoiceScriptText(); if (!text) return;
   const response = await fetch('/voice-api/save-voice', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }) });
   if (!response.ok) return notice.textContent = 'Could not save voice.';
   const blob = await response.blob(); const url = URL.createObjectURL(blob); const a = document.createElement('a'); a.href = url; a.download = 'translator-voice.mp3'; a.click(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  notice.textContent = 'Voice Writer output saved as MP3.';
 });
 
 await refreshNetwork();
