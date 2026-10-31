@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Corporate Agent Network</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <div>
+        <div class="eyebrow">Mozaik Freestyle 2026 · Elastic Agent Workforce</div>
+        <h1>Corporate Agent Network</h1>
+        <p>Personal agents stay with active employees. Specialist agents are instantiated on demand and released after the task.</p>
+      </div>
+      <div class="counter">
+        <span>Active agents</span>
+        <strong id="activeAgents">—</strong>
+      </div>
+    </header>
+
+    <section class="stats">
+      <article><span>Sysadmin</span><strong>1</strong><small>always monitoring</small></article>
+      <article><span>Personal agents</span><strong id="personalCount">—</strong><small>active employees</small></article>
+      <article><span>Specialist agents</span><strong id="specialistCount">—</strong><small>on demand</small></article>
+    </section>
+
+    <section class="controls">
+      <label>
+        Employee action
+        <select id="employeeSelect"></select>
+      </label>
+      <button id="actionButton" class="primary" type="button">Trigger multilingual task</button>
+      <button id="joinButton" type="button">+ Join fourth employee</button>
+      <button id="leaveButton" type="button">− Two employees leave</button>
+    </section>
+
+    <section class="grid">
+      <article class="panel">
+        <div class="panelhead"><h2>Personal employee agents</h2><span>dynamic membership</span></div>
+        <div id="employees" class="cards"></div>
+      </article>
+
+      <article class="panel">
+        <div class="panelhead"><h2>On-demand modules</h2><span>temporary specialists</span></div>
+        <div id="modules" class="cards empty">No specialist module is active.</div>
+      </article>
+    </section>
+
+    <section class="panel logpanel">
+      <div class="panelhead"><h2>Sysadmin event stream</h2><span id="sysadminStatus">monitoring</span></div>
+      <div id="eventLog" class="eventlog"></div>
+    </section>
+
+    <p class="notice">This is an isolated lifecycle prototype. The existing live translator remains unchanged and runs separately with <code>npm run web</code>.</p>
+  </main>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
