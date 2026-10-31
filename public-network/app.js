@@ -15,6 +15,7 @@ const lifecycleTrace = document.querySelector('#lifecycleTrace');
 const phaseLabel = document.querySelector('#phaseLabel');
 const moduleLifecycle = document.querySelector('#moduleLifecycle');
 const parallelStatus = document.querySelector('#parallelStatus');
+const liveHandoff = document.querySelector('#liveHandoff');
 
 let stateCache = null;
 let employeeOptionsSignature = '';
@@ -117,7 +118,6 @@ function renderModules(state) {
 
   modulesEl.className = 'cards';
   modulesEl.innerHTML = state.modules.map((module) => {
-    const activeParallel = module.members.filter((member) => ['running', 'waiting', 'coordinating'].includes(member.status)).length;
     const modeLabel = module.mode === 'real-llm' ? 'REAL LLM' : 'FALLBACK';
     const recentRequests = [...(module.requests || [])].slice(-3).reverse();
     return `
@@ -185,6 +185,7 @@ function renderScenario(state) {
   scenarioButton.textContent = current.running ? '● Demo running…' : '▶ Run elastic workforce demo';
   joinButton.disabled = Boolean(current.running);
   leaveButton.disabled = Boolean(current.running);
+  liveHandoff.hidden = current.step !== 'complete';
 
   if (current.running && !scenarioWasRunning) lifecycleCounts = [];
   scenarioWasRunning = Boolean(current.running);
@@ -222,6 +223,7 @@ scenarioButton.addEventListener('click', async () => {
   scenarioButton.disabled = true;
   lifecycleCounts = [];
   lifecycleTrace.textContent = '—';
+  liveHandoff.hidden = true;
   try {
     await api('/api/scenario/run', { method: 'POST', body: '{}' });
     await refresh();
