@@ -6,7 +6,8 @@
   "scripts": {
     "demo": "node src/demo.js",
     "web": "node src/server.js",
-    "dynamic-test": "node src/dynamic-agent-smoke.js"
+    "dynamic-test": "node src/dynamic-agent-smoke.js",
+    "lifecycle-test": "node src/dynamic-agent-lifecycle-smoke.js"
   },
   "engines": {
     "node": ">=24"
