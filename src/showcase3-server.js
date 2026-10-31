@@ -176,7 +176,7 @@ async function resetDemoTopology() {
   for (const profile of initialEmployees) registerEmployee(profile);
 }
 
-async function waitForCommunicationIdle(timeoutMs = 45000) {
+async function waitForCommunicationIdle(timeoutMs = 30000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const state = resolveNetworkRuntime().state;
@@ -209,15 +209,9 @@ async function runElasticScenario() {
   state.log("scenario.start", "Elastic workforce demo started");
   await sleep(600);
 
-  scenario.step = "james-request";
-  triggerEmployeeAction(networkController, "bvi-james");
-  await sleep(2200);
-
-  scenario.step = "olena-request";
-  triggerEmployeeAction(networkController, "kyiv-olena");
-  await sleep(2200);
-
-  scenario.step = "marko-request";
+  // One real request is enough to prove dynamic spawn + concurrent specialists + shared state.
+  // Keeping the automatic demo to one request prevents a large inference backlog before live voice mode.
+  scenario.step = "live-communication-request";
   triggerEmployeeAction(networkController, "novi-sad-marko");
 
   scenario.step = "waiting-for-coordination";
@@ -231,6 +225,10 @@ async function runElasticScenario() {
     for (const moduleId of [...state.activeModules.keys()]) teardownModule(moduleId);
     await sleep(500);
   }
+
+  // Leave the released 4-agent state visible long enough for UI polling to capture it.
+  scenario.step = "module-released";
+  await sleep(1400);
 
   scenario.step = "fourth-employee-joins";
   registerEmployee(fourthEmployee);
@@ -387,6 +385,7 @@ async function handleVoiceApi(req, res, path) {
     const id = nextFragmentId++;
     const serverReceivedAt = Date.now();
     const clientFinalAt = Number(body.clientFinalAt || 0) || null;
+    console.log(`⏱ voice #${id} speech-final → unified server: ${clientFinalAt ? serverReceivedAt - clientFinalAt : "n/a"} ms`);
     const event = SemanticEvent.create("source.fragment", inputAgent.getId(), {
       id,
       text,
