@@ -75,7 +75,7 @@ function renderLog(state) {
 
 function render(state) {
   stateCache = state;
-  activeAgents.textContent = state.activeAgents;
+  activeAgents.textContent = 1 + state.activePersonalAgents + state.activeSpecialistAgents;
   personalCount.textContent = state.activePersonalAgents;
   specialistCount.textContent = state.activeSpecialistAgents;
   sysadminStatus.textContent = state.sysadmin.status;
