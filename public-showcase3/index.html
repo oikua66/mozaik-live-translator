@@ -40,16 +40,9 @@
         <div>
           <span class="handoff-label">Architecture proven</span>
           <strong>Switch to a live communication use case.</strong>
-          <p>The next screen uses the original voice backend unchanged.</p>
+          <p>The next screen uses the live communication module inside this same product.</p>
         </div>
         <button id="enterLiveButton" class="live-button" type="button">🎙 Enter Live Voice Mode</button>
-      </section>
-
-      <section class="controls">
-        <label>Manual employee action<select id="employeeSelect"></select></label>
-        <button id="actionButton" class="primary" type="button">Trigger multilingual task</button>
-        <button id="joinButton" type="button">+ Join fourth employee</button>
-        <button id="leaveButton" type="button">− Two employees leave</button>
       </section>
 
       <section class="grid">
@@ -67,12 +60,23 @@
         <div class="panelhead"><h2>Sysadmin event stream</h2><span id="sysadminStatus">monitoring</span></div>
         <div id="eventLog" class="eventlog"></div>
       </section>
+
+      <details class="advanced-controls">
+        <summary>Advanced demo controls</summary>
+        <p>Optional manual controls for testing individual employees and additional lifecycle events. They are not needed for the main presentation.</p>
+        <section class="controls">
+          <label>Employee<select id="employeeSelect"></select></label>
+          <button id="actionButton" class="primary" type="button">Send test task</button>
+          <button id="joinButton" type="button">+ Join fourth employee</button>
+          <button id="leaveButton" type="button">− Two employees leave</button>
+        </section>
+      </details>
     </main>
   </div>
 
   <div id="voiceView" class="view">
     <main class="shell">
-      <div class="modebar"><button id="backButton" type="button">← Back to architecture</button><span>Live Voice Mode · original backend on port 3000</span></div>
+      <div class="modebar"><button id="backButton" type="button">← Back to architecture</button><span>Live Voice Mode · unified communication runtime</span></div>
       <header class="hero">
         <div>
           <div class="eyebrow">Live communication module</div>
