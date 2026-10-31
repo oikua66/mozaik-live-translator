@@ -253,6 +253,27 @@ if (micButton) {
     }
     if (microphoneLooksActive()) return;
 
+    if (pendingVoiceConfig) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const notice = document.querySelector('#notice');
+      if (notice) notice.textContent = 'Applying language change…';
+      const waitForConfig = async () => {
+        const deadline = Date.now() + 8000;
+        while (pendingVoiceConfig && Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        if (pendingVoiceConfig) {
+          if (notice) notice.textContent = 'Language change is still processing. Press Start microphone again in a moment.';
+          return;
+        }
+        micRestartBypass = true;
+        micButton.click();
+      };
+      waitForConfig();
+      return;
+    }
+
     const original = document.querySelector('#originalText');
     const hasPreviousSession = ownedVoiceFragmentIds.size > 0 || (original && !original.classList.contains('empty'));
     if (!hasPreviousSession) return;
