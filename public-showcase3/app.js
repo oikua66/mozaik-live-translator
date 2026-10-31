@@ -65,6 +65,7 @@ function renderEmployees(state) {
   const active = state.employees.filter((item) => item.active);
   employeesEl.innerHTML = active.length ? active.map((employee) => {
     const visual = officeVisual(employee);
+    const voice = employee.voicePreference ? ` · voice ${employee.voicePreference}` : '';
     return `
       <div class="agentcard personal-agent">
         <div class="employee-main">
@@ -72,7 +73,7 @@ function renderEmployees(state) {
           <div class="employee-info">
             <strong>${escapeHtml(employee.name)}</strong>
             <span>${escapeHtml(employee.office)}</span>
-            <small>${escapeHtml(employee.language)} · ${escapeHtml(employee.role)}</small>
+            <small>${escapeHtml(employee.language)} · ${escapeHtml(employee.role)}${escapeHtml(voice)}</small>
           </div>
           <span class="office-flag" aria-hidden="true">${visual.flag}</span>
         </div>
@@ -170,6 +171,7 @@ if (window.matchMedia('(max-width: 760px)').matches && logDetails) logDetails.re
 const sourceLanguage = document.querySelector('#sourceLanguage');
 const targetLanguage = document.querySelector('#targetLanguage');
 const outputStyle = document.querySelector('#outputStyle');
+const voicePreference = document.querySelector('#voicePreference');
 const voiceOutput = document.querySelector('#voiceOutput');
 const micButton = document.querySelector('#micButton');
 const micPrivacy = document.querySelector('#micPrivacy');
@@ -195,7 +197,6 @@ const editorDot = document.querySelector('#editorDot');
 const voiceWriterDot = document.querySelector('#voiceWriterDot');
 
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-const speechSynthesisApi = window.speechSynthesis;
 const MIC_IDLE_MS = 20000;
 let recognition = null;
 let recognitionActive = false;
@@ -203,6 +204,8 @@ let listening = false;
 let userSpeaking = false;
 let ttsPlaying = false;
 let ttsWaitingForMicStop = false;
+let currentAudio = null;
+let currentAudioUrl = null;
 let voiceState = null;
 let lastSpokenFragmentId = 0;
 let voiceSessionEnabled = false;
@@ -211,7 +214,6 @@ let micCountdownInterval = null;
 let micIdleDeadline = 0;
 const savedAudioCache = new Map();
 const recognitionLang = { ru: 'ru-RU', uk: 'uk-UA', sr: 'sr-RS', en: 'en-US' };
-const speechLang = { ru: 'ru-RU', uk: 'uk-UA', sr: 'sr-RS', en: 'en-US' };
 
 function setMicLabel(active) {
   micButton.innerHTML = active
@@ -227,7 +229,7 @@ function setMicPrivacy(state, detail = '') {
     micPrivacyTimer.textContent = detail || 'auto-off in 20s';
   } else if (state === 'paused') {
     micPrivacyText.textContent = 'MIC PAUSED';
-    micPrivacyTimer.textContent = detail || 'voice playback';
+    micPrivacyTimer.textContent = detail || 'AI voice playback';
   } else {
     micPrivacyText.textContent = 'MIC OFF';
     micPrivacyTimer.textContent = detail || 'privacy safe';
@@ -290,34 +292,20 @@ function clearVoiceUi() {
   setMicPrivacy('off');
 }
 
-function cancelTts() {
-  ttsWaitingForMicStop = false;
-  if (speechSynthesisApi?.speaking || speechSynthesisApi?.pending) speechSynthesisApi.cancel();
-  ttsPlaying = false;
+function releaseAudioUrl() {
+  if (currentAudioUrl) URL.revokeObjectURL(currentAudioUrl);
+  currentAudioUrl = null;
 }
 
-function pickVoice(lang) {
-  const voices = speechSynthesisApi?.getVoices?.() || [];
-  if (!voices.length) return null;
-  const wanted = lang.toLowerCase();
-  const prefix = wanted.split('-')[0];
-  const score = (voice) => {
-    const voiceLang = String(voice.lang || '').toLowerCase();
-    const name = String(voice.name || '').toLowerCase();
-    let points = 0;
-    if (voiceLang === wanted) points += 100;
-    else if (voiceLang.startsWith(prefix)) points += 60;
-    else return -1000;
-    if (name.includes('google')) points += 35;
-    if (name.includes('natural')) points += 30;
-    if (name.includes('premium')) points += 25;
-    if (name.includes('enhanced')) points += 20;
-    if (name.includes('samantha')) points += 12;
-    if (name.includes('compact')) points -= 35;
-    if (voice.default) points += 5;
-    return points;
-  };
-  return [...voices].sort((a, b) => score(b) - score(a))[0] || null;
+function cancelTts() {
+  ttsWaitingForMicStop = false;
+  if (currentAudio) {
+    try { currentAudio.pause(); } catch {}
+    currentAudio.src = '';
+    currentAudio = null;
+  }
+  releaseAudioUrl();
+  ttsPlaying = false;
 }
 
 function pendingSpeakableBatch() {
@@ -325,9 +313,7 @@ function pendingSpeakableBatch() {
   if (!fragments.length) return null;
   return { text: fragments.map((f) => f.spokenText).join(' '), lastId: fragments.at(-1).id };
 }
-function voiceScreenActive() {
-  return voiceSessionEnabled && voiceView.classList.contains('active');
-}
+function voiceScreenActive() { return voiceSessionEnabled && voiceView.classList.contains('active'); }
 function restartRecognition() {
   if (!voiceScreenActive() || !listening || !recognition || ttsPlaying || ttsWaitingForMicStop || recognitionActive) return;
   setTimeout(() => {
@@ -336,46 +322,74 @@ function restartRecognition() {
     }
   }, 100);
 }
-function startTtsNow() {
-  if (!voiceScreenActive() || !speechSynthesisApi || voiceOutput.value !== 'auto' || ttsPlaying || userSpeaking) return;
+
+async function fetchAiSpeech(text) {
+  const response = await fetch('/voice-api/speech', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ text, voicePreference: voicePreference.value }),
+  });
+  if (!response.ok) {
+    let message = 'AI voice generation failed.';
+    try { message = (await response.json()).error || message; } catch {}
+    throw new Error(message);
+  }
+  return response.blob();
+}
+
+async function startTtsNow() {
+  if (!voiceScreenActive() || voiceOutput.value !== 'auto' || ttsPlaying || userSpeaking) return;
   const batch = pendingSpeakableBatch();
   if (!batch) return;
   ttsPlaying = true;
   clearMicIdleTimer();
-  setMicPrivacy('paused', 'voice playback');
-  const utterance = new SpeechSynthesisUtterance(batch.text);
-  utterance.lang = speechLang[targetLanguage.value] || 'en-US';
-  utterance.rate = 0.86;
-  utterance.pitch = 1.0;
-  utterance.volume = 1.0;
-  const voice = pickVoice(utterance.lang); if (voice) utterance.voice = voice;
-  utterance.onstart = () => {
-    if (!voiceScreenActive()) { speechSynthesisApi.cancel(); ttsPlaying = false; return; }
-    lastSpokenFragmentId = batch.lastId;
-    listeningBadge.textContent = 'Speaking';
-    notice.textContent = 'Voice Writer output is playing at a slower conversational pace.';
-  };
-  utterance.onend = () => {
+  setMicPrivacy('paused', 'AI voice generation');
+  listeningBadge.textContent = 'Speaking';
+  notice.textContent = 'Generating AI voice…';
+  try {
+    const blob = await fetchAiSpeech(batch.text);
+    if (!voiceScreenActive() || !ttsPlaying) return;
+    currentAudioUrl = URL.createObjectURL(blob);
+    currentAudio = new Audio(currentAudioUrl);
+    currentAudio.onplay = () => {
+      lastSpokenFragmentId = batch.lastId;
+      setMicPrivacy('paused', 'AI voice playback');
+      notice.textContent = `AI voice playback · ${voicePreference.options[voicePreference.selectedIndex].text}`;
+    };
+    currentAudio.onended = () => {
+      ttsPlaying = false;
+      currentAudio = null;
+      releaseAudioUrl();
+      listeningBadge.textContent = listening ? 'Listening' : 'Ready';
+      restartRecognition();
+      if (!listening) setMicPrivacy('off');
+      requestTts();
+    };
+    currentAudio.onerror = () => {
+      ttsPlaying = false;
+      currentAudio = null;
+      releaseAudioUrl();
+      notice.textContent = 'AI voice playback failed.';
+      restartRecognition();
+      if (!listening) setMicPrivacy('off');
+    };
+    await currentAudio.play();
+  } catch (error) {
     ttsPlaying = false;
-    listeningBadge.textContent = listening ? 'Listening' : 'Ready';
+    currentAudio = null;
+    releaseAudioUrl();
+    notice.textContent = `AI voice error: ${error.message}`;
     restartRecognition();
     if (!listening) setMicPrivacy('off');
-    requestTts();
-  };
-  utterance.onerror = () => {
-    ttsPlaying = false;
-    restartRecognition();
-    if (!listening) setMicPrivacy('off');
-  };
-  speechSynthesisApi.cancel();
-  setTimeout(() => { if (voiceScreenActive() && ttsPlaying) speechSynthesisApi.speak(utterance); }, 60);
+  }
 }
+
 function requestTts() {
-  if (!voiceScreenActive() || !speechSynthesisApi || voiceOutput.value !== 'auto' || ttsPlaying || ttsWaitingForMicStop || userSpeaking || !pendingSpeakableBatch()) return;
+  if (!voiceScreenActive() || voiceOutput.value !== 'auto' || ttsPlaying || ttsWaitingForMicStop || userSpeaking || !pendingSpeakableBatch()) return;
   if (recognitionActive && recognition) {
     ttsWaitingForMicStop = true;
     clearMicIdleTimer();
-    setMicPrivacy('paused', 'voice playback');
+    setMicPrivacy('paused', 'AI voice pending');
     try { recognition.abort(); return; } catch { recognitionActive = false; ttsWaitingForMicStop = false; }
   }
   startTtsNow();
@@ -417,11 +431,7 @@ async function resetVoiceBackend(maxAttempts = 24) {
     try {
       return await jsonApi('/voice-api/clear', {
         method: 'POST',
-        body: JSON.stringify({
-          sourceLanguage: sourceLanguage.value,
-          targetLanguage: targetLanguage.value,
-          outputStyle: outputStyle.value,
-        }),
+        body: JSON.stringify({ sourceLanguage: sourceLanguage.value, targetLanguage: targetLanguage.value, outputStyle: outputStyle.value }),
       });
     } catch (error) {
       if (!String(error.message).includes('still processing') || attempt === maxAttempts - 1) throw error;
@@ -459,20 +469,9 @@ function startRecognition() {
   recognition.lang = recognitionLang[sourceLanguage.value];
   recognition.continuous = true;
   recognition.interimResults = true;
-  recognition.onstart = () => {
-    recognitionActive = true;
-    setMicPrivacy('live');
-    armMicIdleTimer();
-  };
-  recognition.onspeechstart = () => {
-    userSpeaking = true;
-    listeningBadge.textContent = 'Listening';
-    armMicIdleTimer();
-  };
-  recognition.onspeechend = () => {
-    userSpeaking = false;
-    armMicIdleTimer();
-  };
+  recognition.onstart = () => { recognitionActive = true; setMicPrivacy('live'); armMicIdleTimer(); };
+  recognition.onspeechstart = () => { userSpeaking = true; listeningBadge.textContent = 'Listening'; armMicIdleTimer(); };
+  recognition.onspeechend = () => { userSpeaking = false; armMicIdleTimer(); };
   recognition.onresult = async (event) => {
     if (!voiceScreenActive()) return;
     armMicIdleTimer();
@@ -496,7 +495,7 @@ function startRecognition() {
     clearMicIdleTimer();
     if (ttsWaitingForMicStop) {
       ttsWaitingForMicStop = false;
-      setMicPrivacy('paused', 'voice playback');
+      setMicPrivacy('paused', 'AI voice pending');
       setTimeout(startTtsNow, 50);
       return;
     }
@@ -516,13 +515,8 @@ enterLiveButton.addEventListener('click', async () => {
   cancelTts();
   clearVoiceUi();
   lastSpokenFragmentId = 0;
-  try {
-    const cleared = await resetVoiceBackend();
-    renderVoice(cleared);
-  } catch (error) {
-    notice.textContent = `Could not start a clean voice session: ${error.message}`;
-    return;
-  }
+  try { renderVoice(await resetVoiceBackend()); }
+  catch (error) { notice.textContent = `Could not start a clean voice session: ${error.message}`; return; }
   voiceSessionEnabled = true;
   switchView('voice');
 });
@@ -539,6 +533,11 @@ backButton.addEventListener('click', () => {
 
 micButton.addEventListener('click', () => listening ? stopRecognition() : startRecognition());
 voiceOutput.addEventListener('change', () => { if (voiceOutput.value === 'off') cancelTts(); else requestTts(); });
+voicePreference.addEventListener('change', () => {
+  cancelTts();
+  notice.textContent = `AI voice preference: ${voicePreference.options[voicePreference.selectedIndex].text}.`;
+});
+
 async function updateConfig() {
   if (listening) stopRecognition();
   cancelTts();
@@ -557,29 +556,31 @@ clearButton.addEventListener('click', async () => {
 });
 copyButton.addEventListener('click', async () => {
   const text = currentOutputText();
-  if (text) {
-    await navigator.clipboard.writeText(text);
-    notice.textContent = 'Translation copied.';
-  }
+  if (text) { await navigator.clipboard.writeText(text); notice.textContent = 'Translation copied.'; }
 });
 saveVoiceButton.addEventListener('click', async () => {
   const text = currentVoiceScriptText();
   if (!text) return;
-  let blob = savedAudioCache.get(text);
+  const key = `${voicePreference.value}\n${text}`;
+  let blob = savedAudioCache.get(key);
   if (!blob) {
-    notice.textContent = 'Generating a stable MP3 voice…';
-    const response = await fetch('/voice-api/save-voice', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }) });
+    notice.textContent = 'Preparing AI voice MP3…';
+    const response = await fetch('/voice-api/save-voice', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ text, voicePreference: voicePreference.value }),
+    });
     if (!response.ok) return notice.textContent = 'Could not save voice.';
     blob = await response.blob();
-    savedAudioCache.set(text, blob);
+    savedAudioCache.set(key, blob);
   }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = 'translator-voice.mp3';
+  a.download = `translator-voice-${voicePreference.value}.mp3`;
   a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
-  notice.textContent = 'Voice Writer output saved. Repeated downloads use the same cached audio.';
+  notice.textContent = 'AI voice MP3 saved. Repeated downloads use the same generated audio.';
 });
 
 clearVoiceUi();
