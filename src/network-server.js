@@ -117,6 +117,7 @@ function snapshot() {
       queued: member.queue.length,
       startedAt: member.startedAt || null,
       completedAt: member.completedAt || null,
+      phase: member.currentWork?.phase || null,
     })),
     requests: module.requests.map((request) => ({
       requestId: request.requestId,
@@ -126,6 +127,7 @@ function snapshot() {
       corporateLanguage: request.corporateLanguage,
       text: request.text,
       createdAt: request.createdAt,
+      analyses: request.analyses || {},
       results: request.results,
     })),
   }));
@@ -165,15 +167,15 @@ async function runElasticScenario() {
 
   scenario.step = "james-request";
   triggerEmployeeAction(controller, "bvi-james");
-  await sleep(1800);
+  await sleep(2200);
 
   scenario.step = "olena-request";
   triggerEmployeeAction(controller, "kyiv-olena");
-  await sleep(1800);
+  await sleep(2200);
 
   scenario.step = "marko-request";
   triggerEmployeeAction(controller, "novi-sad-marko");
-  await sleep(7000);
+  await sleep(9500);
 
   scenario.step = "fourth-employee-joins";
   registerEmployee(fourthEmployee);
