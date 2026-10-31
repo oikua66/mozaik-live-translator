@@ -11,6 +11,7 @@ const eventLog = document.querySelector('#eventLog');
 const sysadminStatus = document.querySelector('#sysadminStatus');
 
 let stateCache = null;
+let employeeOptionsSignature = '';
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -35,9 +36,21 @@ function renderEmployees(state) {
     `).join('')
     : '<div class="empty">No employee agents are active.</div>';
 
-  const selected = employeeSelect.value;
-  employeeSelect.innerHTML = active.map((employee) => `<option value="${employee.id}">${employee.name} — ${employee.office}</option>`).join('');
-  if (active.some((employee) => employee.id === selected)) employeeSelect.value = selected;
+  // Rebuilding a native <select> every 250 ms destroys the open dropdown.
+  // Update it only when the active employee set actually changes.
+  const signature = active
+    .map((employee) => `${employee.id}:${employee.name}:${employee.office}`)
+    .join('|');
+
+  if (signature !== employeeOptionsSignature) {
+    const selected = employeeSelect.value;
+    employeeSelect.innerHTML = active
+      .map((employee) => `<option value="${employee.id}">${employee.name} — ${employee.office}</option>`)
+      .join('');
+    if (active.some((employee) => employee.id === selected)) employeeSelect.value = selected;
+    employeeOptionsSignature = signature;
+  }
+
   actionButton.disabled = !active.length;
 }
 
