@@ -3,16 +3,10 @@ const micButton = document.querySelector('#micButton');
 /*
  * Product 3 browser-session guard.
  *
- * The hosted demo intentionally uses one in-memory Mozaik voice runtime. Multiple
- * browsers can therefore see the same server-side fragment list unless the UI
- * scopes it. We keep the runtime shared, but make each browser render and speak
- * only the fragments it submitted.
- *
- * Chrome/Web Speech can emit several cumulative "final" transcripts for one
- * utterance (for example: "Let's" -> "Let's go" -> "Let's go now"). Instead of
- * sending each final immediately, we buffer a short burst and submit one merged
- * utterance after recognition settles. This prevents duplicated text, repeated
- * agent work, and repeated TTS playback.
+ * The hosted demo uses one in-memory Mozaik voice runtime. Keep browser rendering
+ * scoped to fragments submitted by this browser, buffer cumulative Chrome speech
+ * finals, and make every explicit new session/configuration change authoritative
+ * on the backend so stale fragments cannot reappear or leak old language settings.
  */
 const nativeFetch = window.fetch.bind(window);
 const ownedVoiceFragmentIds = new Set();
@@ -54,7 +48,6 @@ function mergeFinalText(previousRaw, currentRaw) {
   if (!currentNorm) return previous;
   if (currentNorm === previousNorm) return current.length >= previous.length ? current : previous;
 
-  // Most common Chrome behaviour: the newer final is a longer version of the old one.
   if (currentNorm.startsWith(`${previousNorm} `)) return current;
   if (previousNorm.startsWith(`${currentNorm} `)) return previous;
 
@@ -63,7 +56,6 @@ function mergeFinalText(previousRaw, currentRaw) {
   const previousWordsRaw = rawWords(previous);
   const currentWordsRaw = rawWords(current);
 
-  // Merge suffix/prefix overlap without repeating the shared words.
   const maxOverlap = Math.min(previousWordsNorm.length, currentWordsNorm.length);
   for (let size = maxOverlap; size > 0; size -= 1) {
     const tail = previousWordsNorm.slice(-size).join(' ');
@@ -71,8 +63,6 @@ function mergeFinalText(previousRaw, currentRaw) {
     if (tail === head) return [...previousWordsRaw, ...currentWordsRaw.slice(size)].join(' ');
   }
 
-  // Two distinct finals received in the same short recognition burst belong to
-  // the same utterance for this demo, so keep both once rather than sending two jobs.
   return `${previous} ${current}`.trim();
 }
 
@@ -130,8 +120,6 @@ async function flushPendingFinal() {
   if (recentNorm && now - recentSubmittedAt <= RECENT_FINAL_WINDOW_MS) {
     if (normalized === recentNorm || recentNorm.startsWith(`${normalized} `)) return;
 
-    // A late cumulative final that extends the utterance after the settle window:
-    // submit only the genuinely new tail, never the already processed prefix.
     if (normalized.startsWith(`${recentNorm} `)) {
       const recentWordCount = recentNorm.split(' ').filter(Boolean).length;
       const tail = rawWords(text).slice(recentWordCount).join(' ').trim();
@@ -177,20 +165,18 @@ function bufferFinalPayload(payload) {
 
 window.fetch = async function scopedVoiceFetch(input, init = {}) {
   const url = requestUrl(input);
+  const method = String(init?.method || 'GET').toUpperCase();
   const isVoiceApi = url.includes('/voice-api/');
   if (!isVoiceApi) return nativeFetch(input, init);
 
-  if (url.includes('/voice-api/fragment') && String(init?.method || 'GET').toUpperCase() === 'POST') {
+  if (url.includes('/voice-api/fragment') && method === 'POST') {
     let payload;
     try { payload = JSON.parse(init.body || '{}'); } catch { payload = null; }
     if (payload?.text) bufferFinalPayload(payload);
-
-    // Return immediately so multiple finals from the same recognition event can
-    // reach the buffer instead of being serialized by app.js's await sendFragment().
     return jsonResponse({ id: null, buffered: true }, 202);
   }
 
-  if (url.includes('/voice-api/state') && String(init?.method || 'GET').toUpperCase() === 'GET') {
+  if (url.includes('/voice-api/state') && method === 'GET') {
     const response = await nativeFetch(input, init);
     if (!response.ok) return response;
     try {
@@ -201,33 +187,26 @@ window.fetch = async function scopedVoiceFetch(input, init = {}) {
     }
   }
 
-  if (url.includes('/voice-api/clear') && String(init?.method || 'GET').toUpperCase() === 'POST') {
+  if (url.includes('/voice-api/config') && method === 'POST') {
+    // Changing source/target/style starts a clean translation context. Reuse the
+    // backend clear endpoint so old fragments and old-language context cannot survive.
+    let requested = {};
+    try { requested = JSON.parse(init.body || '{}'); } catch {}
     resetPendingFinal();
+    const response = await nativeFetch('/voice-api/clear', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(requested),
+    });
+    if (response.ok) resetLocalVoiceScope();
+    return response;
+  }
 
-    // Do not wipe another browser's active/completed session merely because this
-    // browser entered Live Voice or pressed Clear. If foreign fragments exist,
-    // clear only our local scope. If this browser is the sole owner, preserve the
-    // original server-side clear behaviour.
-    try {
-      const stateResponse = await nativeFetch('/voice-api/state');
-      const state = await stateResponse.clone().json();
-      const fragments = Array.isArray(state?.fragments) ? state.fragments : [];
-      const hasForeignFragments = fragments.some((fragment) => !ownedVoiceFragmentIds.has(fragment.id));
-
-      if (hasForeignFragments) {
-        let requested = {};
-        try { requested = JSON.parse(init.body || '{}'); } catch {}
-        resetLocalVoiceScope();
-        return jsonResponse(deriveScopedVoiceState({
-          ...state,
-          sourceLanguage: requested.sourceLanguage || state.sourceLanguage,
-          targetLanguage: requested.targetLanguage || state.targetLanguage,
-          outputStyle: requested.outputStyle || state.outputStyle,
-          fragments: [],
-        }), 200);
-      }
-    } catch {}
-
+  if (url.includes('/voice-api/clear') && method === 'POST') {
+    // Explicit Clear / entering Live Voice / manual microphone restart must be
+    // authoritative. The old foreign-fragment shortcut caused stale server state
+    // to reappear after the UI looked empty.
+    resetPendingFinal();
     const response = await nativeFetch(input, init);
     if (response.ok) resetLocalVoiceScope();
     return response;
@@ -247,35 +226,15 @@ function privacyStop(reason) {
   if (notice) notice.textContent = `Microphone stopped automatically for privacy (${reason}). Press Start microphone to resume.`;
 }
 
-// Switching tabs or minimizing the browser.
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) privacyStop('page hidden');
 });
-
-// Switching to another application/window. Privacy-first: do not keep listening
-// merely because Chrome still considers the document visible.
 window.addEventListener('blur', () => privacyStop('window inactive'));
-
-// Navigation, reload, closing the page, mobile app backgrounding.
 window.addEventListener('pagehide', () => privacyStop('page left'));
 
-async function clearStaleServerVoiceStateOnLoad() {
-  try {
-    const response = await nativeFetch('/voice-api/clear', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: '{}',
-    });
-    if (response.ok) resetLocalVoiceScope();
-  } catch (error) {
-    console.warn('Could not clear stale voice state on page load:', error);
-  }
-}
-
 // A manual microphone stop followed by Start is treated as a new spoken session.
-// Reuse the app's own Clear action so its private TTS cursor is reset as well as
-// the visible text and backend state. This prevents a new utterance from being
-// appended to the previous demo while preserving automatic mic resume after TTS.
+// Trigger the app's own Clear action first; unlike automatic TTS pause/resume, this
+// intentionally discards previous text and resets the backend language context.
 if (micButton) {
   micButton.addEventListener('click', (event) => {
     if (micRestartBypass) {
@@ -340,5 +299,4 @@ function injectLegalUi() {
   });
 }
 
-clearStaleServerVoiceStateOnLoad();
 injectLegalUi();
