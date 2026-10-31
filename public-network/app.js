@@ -31,18 +31,27 @@ async function api(path, options = {}) {
   return body;
 }
 
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
 function renderEmployees(state) {
   const active = state.employees.filter((item) => item.active);
   employeesEl.innerHTML = active.length
     ? active.map((employee) => `
       <div class="agentcard personal-agent">
         <div class="agenttop">
-          <strong>${employee.name}</strong>
+          <strong>${escapeHtml(employee.name)}</strong>
           <span class="pill active">PERSONAL · ACTIVE</span>
         </div>
-        <div>${employee.office}</div>
-        <small>${employee.language} · ${employee.role}</small>
-        <code>${employee.agentId || 'no agent'}</code>
+        <div>${escapeHtml(employee.office)}</div>
+        <small>${escapeHtml(employee.language)} · ${escapeHtml(employee.role)}</small>
+        <code>${escapeHtml(employee.agentId || 'no agent')}</code>
       </div>
     `).join('')
     : '<div class="empty">No employee agents are active.</div>';
@@ -54,13 +63,37 @@ function renderEmployees(state) {
   if (signature !== employeeOptionsSignature) {
     const selected = employeeSelect.value;
     employeeSelect.innerHTML = active
-      .map((employee) => `<option value="${employee.id}">${employee.name} — ${employee.office}</option>`)
+      .map((employee) => `<option value="${escapeHtml(employee.id)}">${escapeHtml(employee.name)} — ${escapeHtml(employee.office)}</option>`)
       .join('');
     if (active.some((employee) => employee.id === selected)) employeeSelect.value = selected;
     employeeOptionsSignature = signature;
   }
 
   actionButton.disabled = !active.length || state.scenario?.running;
+}
+
+function renderRequest(request) {
+  const resultOrder = ['Translator', 'Editor', 'Voice Writer'];
+  return `
+    <div class="requestcard">
+      <div class="requesthead">
+        <strong>${escapeHtml(request.requestedByName || request.requestedBy || 'employee')}</strong>
+        <span>${escapeHtml(request.sourceLanguage || '')} → ${escapeHtml(request.corporateLanguage || 'English')}</span>
+      </div>
+      <div class="source-message">${escapeHtml(request.text || '')}</div>
+      <div class="resultlist">
+        ${resultOrder.map((role) => {
+          const result = request.results?.[role];
+          return `
+            <div class="resultrow">
+              <span>${role}</span>
+              <div>${result ? escapeHtml(result.text) : '<em>working…</em>'}</div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `;
 }
 
 function renderModules(state) {
@@ -75,21 +108,29 @@ function renderModules(state) {
   modulesEl.innerHTML = state.modules.map((module) => {
     const running = module.members.filter((member) => member.status === 'running').length;
     const allRunning = running > 1;
+    const modeLabel = module.mode === 'real-llm' ? 'REAL LLM' : 'FALLBACK';
+    const recentRequests = [...(module.requests || [])].slice(-3).reverse();
     return `
       <div class="modulecard specialist-module">
         <div class="agenttop">
-          <strong>${module.type}</strong>
+          <strong>${escapeHtml(module.type)}</strong>
           <span class="pill module">TEMPORARY · ON DEMAND</span>
         </div>
-        <small>${module.id} · requests served: ${module.requestCount || 0}</small>
+        <div class="modulemeta">
+          <small>${escapeHtml(module.id)} · requests served: ${module.requestCount || 0}</small>
+          <span class="pill mode ${module.mode === 'real-llm' ? 'real' : 'fallback'}">${modeLabel}</span>
+        </div>
         <div class="module-note">${allRunning ? '⚡ Multiple specialist agents running concurrently' : 'Shared-state specialist team'}</div>
         <div class="memberlist">
           ${module.members.map((member) => `
             <div>
-              <span>${member.role}<code>${member.agentId || ''}</code></span>
-              <span class="memberstatus ${member.status}">${member.status}</span>
+              <span>${escapeHtml(member.role)}<code>${escapeHtml(member.agentId || '')}</code></span>
+              <span class="memberstatus ${escapeHtml(member.status)}">${escapeHtml(member.status)}</span>
             </div>
           `).join('')}
+        </div>
+        <div class="requestlist">
+          ${recentRequests.map(renderRequest).join('')}
         </div>
       </div>
     `;
@@ -109,8 +150,8 @@ function renderLog(state) {
     ? state.eventLog.map((entry) => `
       <div class="event event-${entry.type.replaceAll('.', '-')}">
         <time>${new Date(entry.at).toLocaleTimeString()}</time>
-        <span class="eventtype">${entry.type}</span>
-        <span>${entry.message}</span>
+        <span class="eventtype">${escapeHtml(entry.type)}</span>
+        <span>${escapeHtml(entry.message)}</span>
       </div>
     `).join('')
     : '<div class="empty">Waiting for events…</div>';
