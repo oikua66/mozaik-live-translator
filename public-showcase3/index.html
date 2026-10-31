@@ -6,6 +6,18 @@
   <meta name="theme-color" content="#0b1020" />
   <title>Corporate Agent Network</title>
   <link rel="stylesheet" href="/styles.css" />
+  <style>
+    /* The module DOM is refreshed frequently while the demo runs. Keep that
+       refresh visually stable: do not replay the spawn animation on every poll. */
+    .specialist-module{animation:none!important;transform:none!important}
+    .module-panel{min-height:520px}
+    .module-stage{height:405px;overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable}
+    .module-stage #modules{min-height:100%;align-content:start}
+    @media(max-width:760px){
+      .module-panel{min-height:0}
+      .module-stage{height:360px}
+    }
+  </style>
 </head>
 <body>
   <div class="ambient ambient-a"></div>
@@ -73,7 +85,7 @@
         </article>
         <article class="panel module-panel">
           <div class="panelhead"><div><span class="section-kicker">02 · Elastic capacity</span><h2>On-demand modules</h2></div><span>temporary specialists</span></div>
-          <div id="modules" class="cards empty">No specialist module is active.</div>
+          <div class="module-stage"><div id="modules" class="cards empty">No specialist module is active.</div></div>
         </article>
       </section>
 
