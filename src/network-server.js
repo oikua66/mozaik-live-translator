@@ -156,6 +156,36 @@ async function resetDemoTopology() {
   for (const profile of initialEmployees) registerEmployee(profile);
 }
 
+function communicationModuleIsIdle(module) {
+  if (!module) return true;
+  const membersIdle = module.members.every((member) => !member.busy && member.queue.length === 0);
+  const requestsComplete = module.requests.every((request) =>
+    Boolean(request.results?.Translator && request.results?.Editor && request.results?.["Voice Writer"]));
+  return membersIdle && requestsComplete;
+}
+
+async function waitForCommunicationIdle({ timeoutMs = 45000, pollMs = 200 } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  const state = resolveRuntime().state;
+  state.log("scenario.wait", "Waiting for Communication Module to finish real coordinated work");
+
+  while (Date.now() < deadline) {
+    const modules = [...resolveRuntime().state.activeModules.values()]
+      .filter((module) => module.type === "Communication Module");
+
+    if (modules.length === 0 || modules.every(communicationModuleIsIdle)) {
+      state.log("scenario.ready", "Communication Module completed all queued coordinated work");
+      return true;
+    }
+    await sleep(pollMs);
+  }
+
+  state.log("scenario.timeout", "Communication Module did not become idle before demo timeout", {
+    timeoutMs,
+  });
+  return false;
+}
+
 async function runElasticScenario() {
   if (scenario.running) return;
   scenario = { running: true, step: "reset", startedAt: Date.now(), completedAt: null };
@@ -175,7 +205,10 @@ async function runElasticScenario() {
 
   scenario.step = "marko-request";
   triggerEmployeeAction(controller, "novi-sad-marko");
-  await sleep(9500);
+
+  scenario.step = "waiting-for-coordinated-output";
+  await waitForCommunicationIdle();
+  await sleep(600);
 
   scenario.step = "fourth-employee-joins";
   registerEmployee(fourthEmployee);
