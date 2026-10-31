@@ -8,11 +8,13 @@ import {
   createSysadminAgent,
   registerEmployee,
   removeEmployee,
+  teardownModule,
   triggerEmployeeAction,
 } from "./network-agents.js";
 
 const PORT = Number(process.env.NETWORK_PORT || 3001);
 const root = fileURLToPath(new URL("../public-network/", import.meta.url));
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 initializeRuntime({ state: new CorporateNetworkState() });
 
@@ -36,7 +38,16 @@ const initialEmployees = [
   { id: "kyiv-olena", name: "Olena", office: "Kyiv Office", language: "Ukrainian", role: "Project Manager" },
   { id: "novi-sad-marko", name: "Marko", office: "Novi Sad Office", language: "Serbian", role: "Engineer" },
 ];
+const fourthEmployee = {
+  id: "tel-aviv-sarah",
+  name: "Sarah",
+  office: "Tel Aviv Office",
+  language: "Hebrew",
+  role: "Legal Counsel",
+};
 for (const profile of initialEmployees) registerEmployee(profile);
+
+let scenario = { running: false, step: "idle", startedAt: null, completedAt: null };
 
 const mime = {
   ".html": "text/html; charset=utf-8",
@@ -72,6 +83,8 @@ function snapshot() {
     type: module.type,
     requestedBy: module.requestedBy,
     createdAt: module.createdAt,
+    lastRequestedAt: module.lastRequestedAt,
+    requestCount: module.requestCount || 0,
     status: module.status,
     members: module.members,
   }));
@@ -82,14 +95,59 @@ function snapshot() {
   }));
   return {
     sysadmin: { id: sysadminAgent.getId(), name: "Sysadmin Agent", status: "monitoring" },
+    scenario,
     employees,
     modules,
     activePersonalAgents: state.personalAgents.size,
     activeSpecialistAgents: modules.reduce((sum, module) => sum + module.members.length, 0),
-    activeAgents: participants.filter((item) => item.role === "agent").length,
+    activeAgents: 1 + state.personalAgents.size + modules.reduce((sum, module) => sum + module.members.length, 0),
     participants,
     eventLog: [...state.eventLog].slice(-80).reverse(),
   };
+}
+
+async function resetDemoTopology() {
+  const state = resolveRuntime().state;
+  for (const moduleId of [...state.activeModules.keys()]) teardownModule(moduleId);
+  removeEmployee(fourthEmployee.id);
+  for (const profile of initialEmployees) registerEmployee(profile);
+}
+
+async function runElasticScenario() {
+  if (scenario.running) return;
+  scenario = { running: true, step: "reset", startedAt: Date.now(), completedAt: null };
+  await resetDemoTopology();
+
+  const state = resolveRuntime().state;
+  state.log("scenario.start", "Elastic workforce demo started");
+  await sleep(600);
+
+  scenario.step = "james-request";
+  triggerEmployeeAction(controller, "bvi-james");
+  await sleep(1100);
+
+  scenario.step = "olena-request";
+  triggerEmployeeAction(controller, "kyiv-olena");
+  await sleep(1100);
+
+  scenario.step = "marko-request";
+  triggerEmployeeAction(controller, "novi-sad-marko");
+  await sleep(4200);
+
+  scenario.step = "fourth-employee-joins";
+  registerEmployee(fourthEmployee);
+  state.log("scenario.join", "A fourth office came online: Sarah joined from Tel Aviv");
+  await sleep(1800);
+
+  scenario.step = "two-employees-leave";
+  removeEmployee("bvi-james");
+  await sleep(700);
+  removeEmployee("novi-sad-marko");
+  state.log("scenario.leave", "Two employee agents left; capacity contracted automatically");
+  await sleep(700);
+
+  scenario = { running: false, step: "complete", startedAt: scenario.startedAt, completedAt: Date.now() };
+  state.log("scenario.complete", "Elastic workforce demo completed");
 }
 
 async function serveStatic(req, res) {
@@ -118,6 +176,16 @@ const server = http.createServer(async (req, res) => {
       return json(res, 202, snapshot());
     }
 
+    if (req.method === "POST" && req.url === "/api/scenario/run") {
+      if (scenario.running) return json(res, 409, { error: "Scenario is already running." });
+      runElasticScenario().catch((error) => {
+        console.error("Scenario failed:", error);
+        resolveRuntime().state.log("scenario.error", error?.message || "Scenario failed");
+        scenario = { ...scenario, running: false, step: "error", completedAt: Date.now() };
+      });
+      return json(res, 202, snapshot());
+    }
+
     if (req.method === "POST" && req.url === "/api/employee/add") {
       const body = await readJson(req);
       const profile = {
@@ -139,13 +207,7 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (req.method === "POST" && req.url === "/api/scenario/join-fourth") {
-      registerEmployee({
-        id: "tel-aviv-sarah",
-        name: "Sarah",
-        office: "Tel Aviv Office",
-        language: "Hebrew",
-        role: "Legal Counsel",
-      });
+      registerEmployee(fourthEmployee);
       return json(res, 201, snapshot());
     }
 
