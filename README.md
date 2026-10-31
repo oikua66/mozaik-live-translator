@@ -9,6 +9,53 @@
 Live product: **https://agents.koretskiy.com**  
 Render fallback: **https://mozaik-agent-network.onrender.com**
 
+## How to use the product
+
+The live product has two connected modes: **Architecture** and **Live Voice**.
+
+### 1. Architecture demo
+
+1. Open **https://agents.koretskiy.com** in Google Chrome.
+2. The first screen shows the current corporate AI workforce: one permanent Sysadmin Agent plus active Personal Employee Agents.
+3. Click **Run elastic workforce demo**.
+4. Watch the active-agent counter and lifecycle trace.
+5. A temporary **Communication Module** appears with three specialist agents.
+6. Watch the specialist agents work concurrently and coordinate through shared state.
+7. When the specialist work is complete, the temporary module is released automatically.
+8. The demo then shows an employee joining and two employees leaving, so the workforce expands and contracts dynamically.
+9. The expected lifecycle is:
+
+```text
+4 → 7 → 4 → 5 → 4 → 3
+```
+
+The **Sysadmin event stream** at the bottom shows the corresponding runtime events.
+
+### 2. Live Voice mode
+
+You can enter Live Voice at any time using **Live Voice** in the top bar, or use the **Enter Live Voice Mode** button after the architecture demo completes.
+
+1. Choose the **Input language**.
+2. Choose the **Output language**.
+3. Choose an output style: **Faithful**, **Polite & clean**, or **Business**.
+4. Choose a voice preference: **Auto**, **Female presentation**, **Male presentation**, or **Neutral presentation**.
+5. Keep **Voice output = Auto** if you want spoken AI output, or set it to **Off** for text-only output.
+6. Click **Start microphone**.
+7. Speak a short phrase normally.
+8. Watch the Source, Translator, Editor and Voice Writer agent statuses progress.
+9. Read the recognised original text, translation and generated voice script.
+10. If voice output is enabled, the AI-generated spoken version plays automatically.
+11. Use **Save voice MP3** if you want to save the generated spoken output.
+12. Use **Clear** to reset the current Live Voice session.
+
+Privacy behaviour is intentional: the microphone starts only after your click, stops after about 20 seconds of silence, stops when the page/window loses focus, and never resumes automatically.
+
+### Recommended browser
+
+**Google Chrome on desktop or Android.**
+
+The architecture demo works as a standard web interface, but Live Voice depends on browser speech-recognition and microphone behaviour, which are most reliable in Chrome.
+
 ## What it is
 
 Elastic Corporate Agent Network is a working multi-agent corporate runtime built on Mozaik.
