@@ -72,7 +72,11 @@ function createModuleAgent({ name, moduleId, role }) {
             if (!member) return;
             member.status = "running";
             member.startedAt = Date.now();
-            state.log("module.work", `${role} started`, { moduleId, agentId: agent.getId() });
+            state.log("module.work", `${role} started for ${event.payload?.requestedBy || "employee"}`, {
+              moduleId,
+              agentId: agent.getId(),
+              requestedBy: event.payload?.requestedBy || null,
+            });
 
             const delay = role === "Translator" ? 900 : role === "Editor" ? 1250 : 1600;
             setTimeout(() => {
@@ -82,7 +86,11 @@ function createModuleAgent({ name, moduleId, role }) {
               if (!current) return;
               current.status = "done";
               current.completedAt = Date.now();
-              resolveRuntime().state.log("module.done", `${role} completed`, { moduleId, agentId: agent.getId() });
+              resolveRuntime().state.log("module.done", `${role} completed`, {
+                moduleId,
+                agentId: agent.getId(),
+                requestedBy: event.payload?.requestedBy || null,
+              });
             }, delay);
           },
         },
@@ -97,7 +105,7 @@ export function createSysadminAgent() {
   agent = createAgent({
     name: "Sysadmin Agent",
     capabilities: ["inference"],
-    instruction: "Monitor corporate agent capacity and instantiate temporary specialist modules when requested.",
+    instruction: "Monitor corporate agent capacity and instantiate or release temporary specialist modules when requested.",
     tools: [],
     handlers: [
       {
@@ -105,6 +113,12 @@ export function createSysadminAgent() {
         processor: {
           apply({ event }) {
             if (event.payload?.moduleType !== "communication") return;
+            const state = resolveRuntime().state;
+            const existing = [...state.activeModules.values()].find((module) => module.type === "Communication Module");
+            if (existing) {
+              routeCommunicationWork(agent, existing, event.payload);
+              return;
+            }
             spawnCommunicationModule(agent, event.payload);
           },
         },
@@ -144,6 +158,33 @@ export function removeEmployee(employeeId) {
   return true;
 }
 
+function routeCommunicationWork(sysadmin, module, request = {}) {
+  const state = resolveRuntime().state;
+  module.requestedBy = request.requestedBy || null;
+  module.requestCount = (module.requestCount || 0) + 1;
+  module.lastRequestedAt = Date.now();
+  module.status = "active";
+  for (const member of module.members) member.status = "queued";
+
+  if (module.requestCount > 1) {
+    state.log("module.reuse", "Sysadmin routed a new request to the active Communication Module", {
+      moduleId: module.id,
+      requestedBy: request.requestedBy || null,
+      requestCount: module.requestCount,
+    });
+  }
+
+  publish("communication.work", sysadmin, {
+    moduleId: module.id,
+    requestedBy: request.requestedBy || null,
+    sourceLanguage: request.sourceLanguage || null,
+    corporateLanguage: request.corporateLanguage || "English",
+  });
+
+  if (module.teardownTimer) clearTimeout(module.teardownTimer);
+  module.teardownTimer = setTimeout(() => teardownModule(module.id), 3500);
+}
+
 export function spawnCommunicationModule(sysadmin, request = {}) {
   const state = resolveRuntime().state;
   const moduleId = `comm-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
@@ -158,6 +199,8 @@ export function spawnCommunicationModule(sysadmin, request = {}) {
     type: "Communication Module",
     requestedBy: request.requestedBy || null,
     createdAt: Date.now(),
+    lastRequestedAt: Date.now(),
+    requestCount: 0,
     status: "active",
     members: agents.map((item, index) => ({
       agentId: item.getId(),
@@ -165,6 +208,7 @@ export function spawnCommunicationModule(sysadmin, request = {}) {
       status: "queued",
     })),
     agents,
+    teardownTimer: null,
   };
   state.activeModules.set(moduleId, module);
   for (const item of agents) join(item);
@@ -174,14 +218,7 @@ export function spawnCommunicationModule(sysadmin, request = {}) {
     agentIds: agents.map((item) => item.getId()),
   });
 
-  publish("communication.work", sysadmin, {
-    moduleId,
-    requestedBy: request.requestedBy || null,
-    sourceLanguage: request.sourceLanguage || null,
-    corporateLanguage: request.corporateLanguage || "English",
-  });
-
-  setTimeout(() => teardownModule(moduleId), 4200);
+  routeCommunicationWork(sysadmin, module, request);
   return module;
 }
 
@@ -189,10 +226,12 @@ export function teardownModule(moduleId) {
   const state = resolveRuntime().state;
   const module = state.activeModules.get(moduleId);
   if (!module) return false;
+  if (module.teardownTimer) clearTimeout(module.teardownTimer);
   for (const agent of module.agents) leave(agent);
   state.activeModules.delete(moduleId);
-  state.log("module.release", "Communication Module released", {
+  state.log("module.release", "Communication Module released after idle timeout", {
     moduleId,
+    requestCount: module.requestCount || 0,
     agentIds: module.agents.map((item) => item.getId()),
   });
   return true;
