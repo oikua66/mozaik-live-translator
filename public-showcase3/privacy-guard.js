@@ -188,8 +188,6 @@ window.fetch = async function scopedVoiceFetch(input, init = {}) {
   }
 
   if (url.includes('/voice-api/config') && method === 'POST') {
-    // Changing source/target/style starts a clean translation context. Reuse the
-    // backend clear endpoint so old fragments and old-language context cannot survive.
     let requested = {};
     try { requested = JSON.parse(init.body || '{}'); } catch {}
     resetPendingFinal();
@@ -203,9 +201,6 @@ window.fetch = async function scopedVoiceFetch(input, init = {}) {
   }
 
   if (url.includes('/voice-api/clear') && method === 'POST') {
-    // Explicit Clear / entering Live Voice / manual microphone restart must be
-    // authoritative. The old foreign-fragment shortcut caused stale server state
-    // to reappear after the UI looked empty.
     resetPendingFinal();
     const response = await nativeFetch(input, init);
     if (response.ok) resetLocalVoiceScope();
@@ -233,8 +228,6 @@ window.addEventListener('blur', () => privacyStop('window inactive'));
 window.addEventListener('pagehide', () => privacyStop('page left'));
 
 // A manual microphone stop followed by Start is treated as a new spoken session.
-// Trigger the app's own Clear action first; unlike automatic TTS pause/resume, this
-// intentionally discards previous text and resets the backend language context.
 if (micButton) {
   micButton.addEventListener('click', (event) => {
     if (micRestartBypass) {
@@ -267,6 +260,22 @@ if (micButton) {
     waitForCleanStart();
   }, true);
 }
+
+// The app's normal language/style handler only posts /config once. If agents are
+// still finishing the previous phrase that request can get HTTP 409, after which
+// polling restores the old language. It also does not reset the private TTS cursor.
+// Route every source/target/style change through the app's Clear button instead:
+// Clear already stops recognition, resets lastSpokenFragmentId, clears the UI,
+// retries until agents are idle, and sends the currently selected configuration.
+['sourceLanguage', 'targetLanguage', 'outputStyle'].forEach((id) => {
+  const control = document.querySelector(`#${id}`);
+  if (!control) return;
+  control.addEventListener('change', (event) => {
+    event.stopImmediatePropagation();
+    const clearButton = document.querySelector('#clearButton');
+    if (clearButton) clearButton.click();
+  }, true);
+});
 
 function injectLegalUi() {
   const style = document.createElement('style');
