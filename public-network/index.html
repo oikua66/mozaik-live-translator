@@ -47,6 +47,15 @@
       <div class="parallel-state"><span class="parallel-dot"></span><strong id="parallelStatus">No specialist work</strong></div>
     </section>
 
+    <section id="liveHandoff" class="live-handoff" hidden>
+      <div>
+        <span class="handoff-label">Architecture proven</span>
+        <strong>Now use the same communication idea live.</strong>
+        <p>Speak into the microphone and watch the real multi-agent voice translator work.</p>
+      </div>
+      <a class="live-button" href="http://localhost:3000">🎙 Enter Live Voice Mode</a>
+    </section>
+
     <section class="controls">
       <label>
         Manual employee action
@@ -74,7 +83,7 @@
       <div id="eventLog" class="eventlog"></div>
     </section>
 
-    <p class="notice">This is an isolated lifecycle prototype. The existing live translator remains unchanged and runs separately with <code>npm run web</code>.</p>
+    <p class="notice">Use <code>npm run showcase</code> for the full presentation: architecture demo on port 3001, then live voice mode on port 3000. The existing translator remains unchanged.</p>
   </main>
   <script type="module" src="/app.js"></script>
 </body>
