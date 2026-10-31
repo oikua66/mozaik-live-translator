@@ -11,9 +11,15 @@ const employeesEl = document.querySelector('#employees');
 const modulesEl = document.querySelector('#modules');
 const eventLog = document.querySelector('#eventLog');
 const sysadminStatus = document.querySelector('#sysadminStatus');
+const lifecycleTrace = document.querySelector('#lifecycleTrace');
+const phaseLabel = document.querySelector('#phaseLabel');
+const moduleLifecycle = document.querySelector('#moduleLifecycle');
+const parallelStatus = document.querySelector('#parallelStatus');
 
 let stateCache = null;
 let employeeOptionsSignature = '';
+let lifecycleCounts = [];
+let scenarioWasRunning = false;
 
 async function api(path, options = {}) {
   const response = await fetch(path, {
@@ -29,8 +35,11 @@ function renderEmployees(state) {
   const active = state.employees.filter((item) => item.active);
   employeesEl.innerHTML = active.length
     ? active.map((employee) => `
-      <div class="agentcard">
-        <div class="agenttop"><strong>${employee.name}</strong><span class="pill active">ACTIVE</span></div>
+      <div class="agentcard personal-agent">
+        <div class="agenttop">
+          <strong>${employee.name}</strong>
+          <span class="pill active">PERSONAL · ACTIVE</span>
+        </div>
         <div>${employee.office}</div>
         <small>${employee.language} · ${employee.role}</small>
         <code>${employee.agentId || 'no agent'}</code>
@@ -58,26 +67,47 @@ function renderModules(state) {
   if (!state.modules.length) {
     modulesEl.className = 'cards empty';
     modulesEl.textContent = 'No specialist module is active.';
+    parallelStatus.textContent = 'No specialist work';
     return;
   }
+
   modulesEl.className = 'cards';
-  modulesEl.innerHTML = state.modules.map((module) => `
-    <div class="modulecard">
-      <div class="agenttop"><strong>${module.type}</strong><span class="pill module">ON DEMAND</span></div>
-      <small>${module.id} · requests served: ${module.requestCount || 0}</small>
-      <div class="memberlist">
-        ${module.members.map((member) => `
-          <div><span>${member.role}</span><span class="memberstatus ${member.status}">${member.status}</span></div>
-        `).join('')}
+  modulesEl.innerHTML = state.modules.map((module) => {
+    const running = module.members.filter((member) => member.status === 'running').length;
+    const allRunning = running > 1;
+    return `
+      <div class="modulecard specialist-module">
+        <div class="agenttop">
+          <strong>${module.type}</strong>
+          <span class="pill module">TEMPORARY · ON DEMAND</span>
+        </div>
+        <small>${module.id} · requests served: ${module.requestCount || 0}</small>
+        <div class="module-note">${allRunning ? '⚡ Multiple specialist agents running concurrently' : 'Shared-state specialist team'}</div>
+        <div class="memberlist">
+          ${module.members.map((member) => `
+            <div>
+              <span>${member.role}<code>${member.agentId || ''}</code></span>
+              <span class="memberstatus ${member.status}">${member.status}</span>
+            </div>
+          `).join('')}
+        </div>
       </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
+
+  const runningSpecialists = state.modules.flatMap((module) => module.members)
+    .filter((member) => member.status === 'running').length;
+  parallelStatus.textContent = runningSpecialists > 1
+    ? `${runningSpecialists} specialist agents running in parallel`
+    : runningSpecialists === 1
+      ? '1 specialist agent running'
+      : 'Specialist module active';
 }
 
 function renderLog(state) {
   eventLog.innerHTML = state.eventLog.length
     ? state.eventLog.map((entry) => `
-      <div class="event">
+      <div class="event event-${entry.type.replaceAll('.', '-')}">
         <time>${new Date(entry.at).toLocaleTimeString()}</time>
         <span class="eventtype">${entry.type}</span>
         <span>${entry.message}</span>
@@ -86,13 +116,37 @@ function renderLog(state) {
     : '<div class="empty">Waiting for events…</div>';
 }
 
+function latestModuleLifecycle(state) {
+  const relevant = state.eventLog.find((entry) =>
+    ['module.spawn', 'module.reuse', 'module.release'].includes(entry.type));
+  if (!relevant) return 'READY';
+  if (relevant.type === 'module.spawn') return 'SPAWNED';
+  if (relevant.type === 'module.reuse') return 'REUSED';
+  if (relevant.type === 'module.release') return 'RELEASED';
+  return 'READY';
+}
+
 function renderScenario(state) {
   const current = state.scenario || { running: false, step: 'idle' };
   scenarioStatus.textContent = current.step || 'idle';
+  phaseLabel.textContent = String(current.step || 'idle').replaceAll('-', ' ').toUpperCase();
   scenarioButton.disabled = Boolean(current.running);
   scenarioButton.textContent = current.running ? '● Demo running…' : '▶ Run elastic workforce demo';
   joinButton.disabled = Boolean(current.running);
   leaveButton.disabled = Boolean(current.running);
+
+  if (current.running && !scenarioWasRunning) lifecycleCounts = [];
+  scenarioWasRunning = Boolean(current.running);
+}
+
+function renderLifecycle(state) {
+  const count = state.activeAgents;
+  if (!lifecycleCounts.length || lifecycleCounts[lifecycleCounts.length - 1] !== count) {
+    lifecycleCounts.push(count);
+  }
+  lifecycleTrace.textContent = lifecycleCounts.join(' → ');
+  moduleLifecycle.textContent = latestModuleLifecycle(state);
+  moduleLifecycle.dataset.state = moduleLifecycle.textContent.toLowerCase();
 }
 
 function render(state) {
@@ -102,6 +156,7 @@ function render(state) {
   specialistCount.textContent = state.activeSpecialistAgents;
   sysadminStatus.textContent = state.sysadmin.status;
   renderScenario(state);
+  renderLifecycle(state);
   renderEmployees(state);
   renderModules(state);
   renderLog(state);
@@ -114,6 +169,8 @@ async function refresh() {
 
 scenarioButton.addEventListener('click', async () => {
   scenarioButton.disabled = true;
+  lifecycleCounts = [];
+  lifecycleTrace.textContent = '—';
   try {
     await api('/api/scenario/run', { method: 'POST', body: '{}' });
     await refresh();
