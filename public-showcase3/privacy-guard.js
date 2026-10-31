@@ -6,18 +6,22 @@ const micButton = document.querySelector('#micButton');
  * The hosted demo intentionally uses one in-memory Mozaik voice runtime. Multiple
  * browsers can therefore see the same server-side fragment list unless the UI
  * scopes it. We keep the runtime shared, but make each browser render and speak
- * only the fragments it submitted. This prevents a phone and desktop opened at
- * the same time from replaying each other's voice output.
+ * only the fragments it submitted.
  *
- * The same boundary also suppresses Chrome/Web Speech duplicate or cumulative
- * final transcripts (for example: "Let's" -> "Let's go" -> "Let's go now").
- * Only the non-overlapping remainder is submitted as the next fragment.
+ * Chrome/Web Speech can emit several cumulative "final" transcripts for one
+ * utterance (for example: "Let's" -> "Let's go" -> "Let's go now"). Instead of
+ * sending each final immediately, we buffer a short burst and submit one merged
+ * utterance after recognition settles. This prevents duplicated text, repeated
+ * agent work, and repeated TTS playback.
  */
 const nativeFetch = window.fetch.bind(window);
 const ownedVoiceFragmentIds = new Set();
-let lastObservedFinal = '';
-let lastObservedFinalAt = 0;
-const FINAL_OVERLAP_WINDOW_MS = 8000;
+const FINAL_SETTLE_MS = 900;
+const RECENT_FINAL_WINDOW_MS = 8000;
+let pendingFinalPayload = null;
+let pendingFinalTimer = null;
+let recentSubmittedFinal = '';
+let recentSubmittedAt = 0;
 
 function requestUrl(input) {
   if (typeof input === 'string') return input;
@@ -37,51 +41,51 @@ function rawWords(value) {
   return String(value || '').trim().split(/\s+/).filter(Boolean);
 }
 
-function dedupeFinalTranscript(value) {
-  const raw = String(value || '').trim();
-  if (!raw) return '';
+function mergeFinalText(previousRaw, currentRaw) {
+  const previous = String(previousRaw || '').trim();
+  const current = String(currentRaw || '').trim();
+  if (!previous) return current;
+  if (!current) return previous;
 
-  const now = Date.now();
-  if (!lastObservedFinal || now - lastObservedFinalAt > FINAL_OVERLAP_WINDOW_MS) {
-    lastObservedFinal = raw;
-    lastObservedFinalAt = now;
-    return raw;
-  }
+  const previousNorm = normalizeSpeech(previous);
+  const currentNorm = normalizeSpeech(current);
+  if (!previousNorm) return current;
+  if (!currentNorm) return previous;
+  if (currentNorm === previousNorm) return current.length >= previous.length ? current : previous;
 
-  const previous = normalizeSpeech(lastObservedFinal);
-  const current = normalizeSpeech(raw);
-  const previousWords = previous.split(' ').filter(Boolean);
-  const currentWords = current.split(' ').filter(Boolean);
-  const originalWords = rawWords(raw);
+  // Most common Chrome behaviour: the newer final is a longer version of the old one.
+  if (currentNorm.startsWith(`${previousNorm} `)) return current;
+  if (previousNorm.startsWith(`${currentNorm} `)) return previous;
 
-  lastObservedFinal = raw;
-  lastObservedFinalAt = now;
+  const previousWordsNorm = previousNorm.split(' ').filter(Boolean);
+  const currentWordsNorm = currentNorm.split(' ').filter(Boolean);
+  const previousWordsRaw = rawWords(previous);
+  const currentWordsRaw = rawWords(current);
 
-  if (!current || current === previous) return '';
-
-  // Chrome can promote the same utterance through increasingly complete finals.
-  if (current.startsWith(`${previous} `)) {
-    return originalWords.slice(previousWords.length).join(' ');
-  }
-  if (previous.startsWith(`${current} `)) return '';
-
-  // Also remove a short suffix/prefix overlap across consecutive finals.
-  const maxOverlap = Math.min(previousWords.length, currentWords.length);
+  // Merge suffix/prefix overlap without repeating the shared words.
+  const maxOverlap = Math.min(previousWordsNorm.length, currentWordsNorm.length);
   for (let size = maxOverlap; size > 0; size -= 1) {
-    const previousTail = previousWords.slice(-size).join(' ');
-    const currentHead = currentWords.slice(0, size).join(' ');
-    if (previousTail === currentHead) {
-      return originalWords.slice(size).join(' ');
-    }
+    const tail = previousWordsNorm.slice(-size).join(' ');
+    const head = currentWordsNorm.slice(0, size).join(' ');
+    if (tail === head) return [...previousWordsRaw, ...currentWordsRaw.slice(size)].join(' ');
   }
 
-  return raw;
+  // Two distinct finals received in the same short recognition burst belong to
+  // the same utterance for this demo, so keep both once rather than sending two jobs.
+  return `${previous} ${current}`.trim();
+}
+
+function resetPendingFinal() {
+  if (pendingFinalTimer) clearTimeout(pendingFinalTimer);
+  pendingFinalTimer = null;
+  pendingFinalPayload = null;
 }
 
 function resetLocalVoiceScope() {
   ownedVoiceFragmentIds.clear();
-  lastObservedFinal = '';
-  lastObservedFinalAt = 0;
+  recentSubmittedFinal = '';
+  recentSubmittedAt = 0;
+  resetPendingFinal();
 }
 
 function deriveScopedVoiceState(state) {
@@ -110,6 +114,66 @@ function jsonResponse(body, status = 200) {
   });
 }
 
+async function flushPendingFinal() {
+  pendingFinalTimer = null;
+  const payload = pendingFinalPayload;
+  pendingFinalPayload = null;
+  if (!payload?.text) return;
+
+  const text = String(payload.text).trim();
+  const normalized = normalizeSpeech(text);
+  if (!normalized) return;
+
+  const now = Date.now();
+  const recentNorm = normalizeSpeech(recentSubmittedFinal);
+  if (recentNorm && now - recentSubmittedAt <= RECENT_FINAL_WINDOW_MS) {
+    if (normalized === recentNorm || recentNorm.startsWith(`${normalized} `)) return;
+
+    // A late cumulative final that extends the utterance after the settle window:
+    // submit only the genuinely new tail, never the already processed prefix.
+    if (normalized.startsWith(`${recentNorm} `)) {
+      const recentWordCount = recentNorm.split(' ').filter(Boolean).length;
+      const tail = rawWords(text).slice(recentWordCount).join(' ').trim();
+      if (!tail) return;
+      payload.text = tail;
+    }
+  }
+
+  try {
+    const response = await nativeFetch('/voice-api/fragment', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) return;
+    const body = await response.clone().json();
+    if (Number.isFinite(Number(body?.id))) ownedVoiceFragmentIds.add(Number(body.id));
+    recentSubmittedFinal = text;
+    recentSubmittedAt = Date.now();
+  } catch (error) {
+    console.error('Buffered voice fragment failed:', error);
+  }
+}
+
+function bufferFinalPayload(payload) {
+  const text = String(payload?.text || '').trim();
+  if (!text) return;
+
+  if (!pendingFinalPayload) {
+    pendingFinalPayload = { ...payload, text };
+  } else {
+    pendingFinalPayload = {
+      ...pendingFinalPayload,
+      ...payload,
+      text: mergeFinalText(pendingFinalPayload.text, text),
+      clientFinalAt: payload.clientFinalAt || pendingFinalPayload.clientFinalAt,
+    };
+  }
+
+  if (pendingFinalTimer) clearTimeout(pendingFinalTimer);
+  pendingFinalTimer = setTimeout(flushPendingFinal, FINAL_SETTLE_MS);
+}
+
 window.fetch = async function scopedVoiceFetch(input, init = {}) {
   const url = requestUrl(input);
   const isVoiceApi = url.includes('/voice-api/');
@@ -118,19 +182,11 @@ window.fetch = async function scopedVoiceFetch(input, init = {}) {
   if (url.includes('/voice-api/fragment') && String(init?.method || 'GET').toUpperCase() === 'POST') {
     let payload;
     try { payload = JSON.parse(init.body || '{}'); } catch { payload = null; }
-    if (payload?.text) {
-      const dedupedText = dedupeFinalTranscript(payload.text);
-      if (!dedupedText) return jsonResponse({ id: null, deduped: true }, 202);
-      payload.text = dedupedText;
-      init = { ...init, body: JSON.stringify(payload) };
-    }
+    if (payload?.text) bufferFinalPayload(payload);
 
-    const response = await nativeFetch(input, init);
-    try {
-      const body = await response.clone().json();
-      if (response.ok && Number.isFinite(Number(body?.id))) ownedVoiceFragmentIds.add(Number(body.id));
-    } catch {}
-    return response;
+    // Return immediately so multiple finals from the same recognition event can
+    // reach the buffer instead of being serialized by app.js's await sendFragment().
+    return jsonResponse({ id: null, buffered: true }, 202);
   }
 
   if (url.includes('/voice-api/state') && String(init?.method || 'GET').toUpperCase() === 'GET') {
@@ -145,6 +201,8 @@ window.fetch = async function scopedVoiceFetch(input, init = {}) {
   }
 
   if (url.includes('/voice-api/clear') && String(init?.method || 'GET').toUpperCase() === 'POST') {
+    resetPendingFinal();
+
     // Do not wipe another browser's active/completed session merely because this
     // browser entered Live Voice or pressed Clear. If foreign fragments exist,
     // clear only our local scope. If this browser is the sole owner, preserve the
