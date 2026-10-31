@@ -27,7 +27,7 @@ import {
 import { TranslatorState } from "./runtime.js";
 import { inputAgent, translatorAgent, editorAgent, voiceWriterAgent } from "./agents.js";
 
-const PORT = Number(process.env.SHOWCASE3_PORT || 3002);
+const PORT = Number(process.env.PORT || process.env.SHOWCASE3_PORT || 3002);
 const root = fileURLToPath(new URL("../public-showcase3/", import.meta.url));
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -439,6 +439,14 @@ async function serveStatic(req, res) {
 const server = http.createServer(async (req, res) => {
   try {
     const url = req.url || "/";
+    if (url === "/health" || url === "/healthz") {
+      return json(res, 200, {
+        ok: true,
+        service: "elastic-corporate-agent-network",
+        uptimeSeconds: Math.round(process.uptime()),
+        openaiConfigured: Boolean(process.env.OPENAI_API_KEY),
+      });
+    }
     if (url.startsWith("/network-api/")) {
       const path = url.slice("/network-api".length).split("?")[0];
       return handleNetworkApi(req, res, path);
@@ -454,10 +462,11 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, "0.0.0.0", () => {
   const mode = process.env.OPENAI_API_KEY && process.env.NETWORK_LLM !== "0" ? "real LLM" : "fallback";
-  console.log(`\n🏢 Unified Corporate Agent Product: http://localhost:${PORT}`);
+  console.log(`\n🏢 Unified Corporate Agent Product listening on port ${PORT}`);
   console.log(`Network module: ${mode}`);
   console.log("Live voice module: browser speech recognition + OpenAI AI TTS.");
+  console.log("Health check: /health");
   console.log("Backup products remain untouched: npm run web / npm run network-demo.\n");
 });
