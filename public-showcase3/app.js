@@ -9,8 +9,25 @@ function switchView(name) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 enterLiveButton.addEventListener('click', () => switchView('voice'));
-backButton.addEventListener('click', () => {
+backButton.addEventListener('click', async () => {
   stopRecognition();
+  cancelTts();
+  lastSpokenFragmentId = 0;
+  try {
+    const cleared = await jsonApi('/voice-api/clear', {
+      method: 'POST',
+      body: JSON.stringify({
+        sourceLanguage: sourceLanguage.value,
+        targetLanguage: targetLanguage.value,
+        outputStyle: outputStyle.value,
+      }),
+    });
+    renderVoice(cleared);
+  } catch (error) {
+    notice.textContent = `Could not reset voice session: ${error.message}`;
+  }
+  interimText.textContent = '';
+  notice.textContent = 'Optimized for Google Chrome on desktop and Android.';
   switchView('architecture');
 });
 
