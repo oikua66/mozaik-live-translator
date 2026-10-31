@@ -8,28 +8,6 @@ function switchView(name) {
   voiceView.classList.toggle('active', name === 'voice');
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
-enterLiveButton.addEventListener('click', () => switchView('voice'));
-backButton.addEventListener('click', async () => {
-  stopRecognition();
-  cancelTts();
-  lastSpokenFragmentId = 0;
-  try {
-    const cleared = await jsonApi('/voice-api/clear', {
-      method: 'POST',
-      body: JSON.stringify({
-        sourceLanguage: sourceLanguage.value,
-        targetLanguage: targetLanguage.value,
-        outputStyle: outputStyle.value,
-      }),
-    });
-    renderVoice(cleared);
-  } catch (error) {
-    notice.textContent = `Could not reset voice session: ${error.message}`;
-  }
-  interimText.textContent = '';
-  notice.textContent = 'Optimized for Google Chrome on desktop and Android.';
-  switchView('architecture');
-});
 
 async function jsonApi(path, options = {}) {
   const response = await fetch(path, {
@@ -223,6 +201,7 @@ let ttsPlaying = false;
 let ttsWaitingForMicStop = false;
 let voiceState = null;
 let lastSpokenFragmentId = 0;
+let voiceSessionEnabled = false;
 const recognitionLang = { ru: 'ru-RU', uk: 'uk-UA', sr: 'sr-RS', en: 'en-US' };
 const speechLang = { ru: 'ru-RU', uk: 'uk-UA', sr: 'sr-RS', en: 'en-US' };
 
@@ -240,6 +219,25 @@ function visibleTranslation(f) { return isSmartStyle() ? (f.finalText || '') : (
 function currentOutputText() { return (voiceState?.fragments || []).map(visibleTranslation).filter(Boolean).join(' '); }
 function currentVoiceScriptText() { return (voiceState?.fragments || []).map((f) => f.spokenText || '').filter(Boolean).join(' '); }
 
+function clearVoiceUi() {
+  voiceState = { fragments: [] };
+  originalText.textContent = 'Your speech will appear here.';
+  translatedText.textContent = 'The translation will appear here.';
+  voiceScriptText.textContent = 'The spoken version will appear here after verification.';
+  originalText.classList.add('empty');
+  translatedText.classList.add('empty');
+  voiceScriptText.classList.add('empty');
+  interimText.textContent = '';
+  latencyLine.textContent = 'Latency: waiting for speech…';
+  saveVoiceButton.disabled = true;
+  setStatus(inputStatus, inputDot, 'idle');
+  setStatus(translatorStatus, translatorDot, 'idle');
+  setStatus(editorStatus, editorDot, 'idle');
+  setStatus(voiceWriterStatus, voiceWriterDot, 'idle');
+  listeningBadge.textContent = 'Ready';
+  setMicLabel(false);
+}
+
 function cancelTts() {
   ttsWaitingForMicStop = false;
   if (speechSynthesisApi?.speaking || speechSynthesisApi?.pending) speechSynthesisApi.cancel();
@@ -254,26 +252,34 @@ function pendingSpeakableBatch() {
   if (!fragments.length) return null;
   return { text: fragments.map((f) => f.spokenText).join(' '), lastId: fragments.at(-1).id };
 }
+function voiceScreenActive() {
+  return voiceSessionEnabled && voiceView.classList.contains('active');
+}
 function restartRecognition() {
-  if (!listening || !recognition || ttsPlaying || ttsWaitingForMicStop || recognitionActive) return;
-  setTimeout(() => { if (listening && !ttsPlaying && !ttsWaitingForMicStop && !recognitionActive) { try { recognition.start(); } catch {} } }, 100);
+  if (!voiceScreenActive() || !listening || !recognition || ttsPlaying || ttsWaitingForMicStop || recognitionActive) return;
+  setTimeout(() => { if (voiceScreenActive() && listening && !ttsPlaying && !ttsWaitingForMicStop && !recognitionActive) { try { recognition.start(); } catch {} } }, 100);
 }
 function startTtsNow() {
-  if (!speechSynthesisApi || voiceOutput.value !== 'auto' || ttsPlaying || userSpeaking) return;
+  if (!voiceScreenActive() || !speechSynthesisApi || voiceOutput.value !== 'auto' || ttsPlaying || userSpeaking) return;
   const batch = pendingSpeakableBatch();
   if (!batch) return;
   ttsPlaying = true;
   const utterance = new SpeechSynthesisUtterance(batch.text);
   utterance.lang = speechLang[targetLanguage.value] || 'en-US';
   const voice = pickVoice(utterance.lang); if (voice) utterance.voice = voice;
-  utterance.onstart = () => { lastSpokenFragmentId = batch.lastId; listeningBadge.textContent = 'Speaking'; notice.textContent = 'Voice Writer output is playing.'; };
+  utterance.onstart = () => {
+    if (!voiceScreenActive()) { speechSynthesisApi.cancel(); ttsPlaying = false; return; }
+    lastSpokenFragmentId = batch.lastId;
+    listeningBadge.textContent = 'Speaking';
+    notice.textContent = 'Voice Writer output is playing.';
+  };
   utterance.onend = () => { ttsPlaying = false; listeningBadge.textContent = listening ? 'Listening' : 'Ready'; restartRecognition(); requestTts(); };
   utterance.onerror = () => { ttsPlaying = false; restartRecognition(); };
   speechSynthesisApi.cancel();
-  setTimeout(() => { if (ttsPlaying) speechSynthesisApi.speak(utterance); }, 60);
+  setTimeout(() => { if (voiceScreenActive() && ttsPlaying) speechSynthesisApi.speak(utterance); }, 60);
 }
 function requestTts() {
-  if (!speechSynthesisApi || voiceOutput.value !== 'auto' || ttsPlaying || ttsWaitingForMicStop || userSpeaking || !pendingSpeakableBatch()) return;
+  if (!voiceScreenActive() || !speechSynthesisApi || voiceOutput.value !== 'auto' || ttsPlaying || ttsWaitingForMicStop || userSpeaking || !pendingSpeakableBatch()) return;
   if (recognitionActive && recognition) {
     ttsWaitingForMicStop = true;
     try { recognition.abort(); return; } catch { recognitionActive = false; ttsWaitingForMicStop = false; }
@@ -303,14 +309,35 @@ function renderVoice(state) {
   outputStyle.value = state.outputStyle || outputStyle.value;
   const latest = [...fragments].reverse().find((f) => f.clientFinalAt);
   latencyLine.textContent = latest ? `Latest fragment #${latest.id} · Translator ${latest.translatedAt ? ((latest.translatedAt - latest.clientFinalAt) / 1000).toFixed(2) + ' s' : '…'} · Editor ${latest.completedAt ? ((latest.completedAt - latest.clientFinalAt) / 1000).toFixed(2) + ' s' : '…'} · Voice ${latest.voiceCompletedAt ? ((latest.voiceCompletedAt - latest.clientFinalAt) / 1000).toFixed(2) + ' s' : '…'}` : 'Latency: waiting for speech…';
-  requestTts();
+  if (voiceScreenActive()) requestTts();
 }
+
 async function refreshVoice() {
+  if (!voiceSessionEnabled) return;
   try { renderVoice(await jsonApi('/voice-api/state')); }
   catch (error) { notice.textContent = `Connection error: ${error.message}`; }
 }
+
+async function resetVoiceBackend(maxAttempts = 24) {
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    try {
+      return await jsonApi('/voice-api/clear', {
+        method: 'POST',
+        body: JSON.stringify({
+          sourceLanguage: sourceLanguage.value,
+          targetLanguage: targetLanguage.value,
+          outputStyle: outputStyle.value,
+        }),
+      });
+    } catch (error) {
+      if (!String(error.message).includes('still processing') || attempt === maxAttempts - 1) throw error;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  }
+}
+
 async function sendFragment(text) {
-  const clean = text.trim(); if (!clean) return;
+  const clean = text.trim(); if (!clean || !voiceScreenActive()) return;
   await jsonApi('/voice-api/fragment', { method: 'POST', body: JSON.stringify({ text: clean, clientFinalAt: Date.now() }) });
   interimText.textContent = '';
   await refreshVoice();
@@ -321,6 +348,7 @@ function stopRecognition() {
   recognitionActive = false; cancelTts(); setMicLabel(false); listeningBadge.textContent = 'Ready'; interimText.textContent = '';
 }
 function startRecognition() {
+  if (!voiceScreenActive()) return;
   if (!SpeechRecognition) { notice.textContent = 'Google Chrome is required for the microphone speech-recognition demo.'; return; }
   recognition = new SpeechRecognition();
   recognition.lang = recognitionLang[sourceLanguage.value];
@@ -330,6 +358,7 @@ function startRecognition() {
   recognition.onspeechstart = () => { userSpeaking = true; listeningBadge.textContent = 'Listening'; };
   recognition.onspeechend = () => { userSpeaking = false; };
   recognition.onresult = async (event) => {
+    if (!voiceScreenActive()) return;
     let interim = '';
     for (let i = event.resultIndex; i < event.results.length; i += 1) {
       const text = event.results[i][0].transcript;
@@ -351,6 +380,33 @@ function startRecognition() {
   listening = true; setMicLabel(true); listeningBadge.textContent = 'Listening'; notice.textContent = 'Speak naturally. Four cooperating agents will process each final speech fragment.'; recognition.start();
 }
 
+enterLiveButton.addEventListener('click', async () => {
+  voiceSessionEnabled = false;
+  stopRecognition();
+  cancelTts();
+  clearVoiceUi();
+  lastSpokenFragmentId = 0;
+  try {
+    const cleared = await resetVoiceBackend();
+    renderVoice(cleared);
+  } catch (error) {
+    notice.textContent = `Could not start a clean voice session: ${error.message}`;
+    return;
+  }
+  voiceSessionEnabled = true;
+  switchView('voice');
+});
+
+backButton.addEventListener('click', () => {
+  voiceSessionEnabled = false;
+  stopRecognition();
+  cancelTts();
+  lastSpokenFragmentId = 0;
+  clearVoiceUi();
+  switchView('architecture');
+  resetVoiceBackend().catch(() => {});
+});
+
 micButton.addEventListener('click', () => listening ? stopRecognition() : startRecognition());
 voiceOutput.addEventListener('change', () => { if (voiceOutput.value === 'off') cancelTts(); else requestTts(); });
 async function updateConfig() {
@@ -360,7 +416,14 @@ async function updateConfig() {
 sourceLanguage.addEventListener('change', updateConfig);
 targetLanguage.addEventListener('change', updateConfig);
 outputStyle.addEventListener('change', updateConfig);
-clearButton.addEventListener('click', async () => { if (listening) stopRecognition(); cancelTts(); renderVoice(await jsonApi('/voice-api/clear', { method: 'POST', body: JSON.stringify({ sourceLanguage: sourceLanguage.value, targetLanguage: targetLanguage.value, outputStyle: outputStyle.value }) })); lastSpokenFragmentId = 0; });
+clearButton.addEventListener('click', async () => {
+  if (listening) stopRecognition();
+  cancelTts();
+  lastSpokenFragmentId = 0;
+  clearVoiceUi();
+  try { renderVoice(await resetVoiceBackend()); }
+  catch (error) { notice.textContent = `Could not clear voice session: ${error.message}`; }
+});
 copyButton.addEventListener('click', async () => { const text = currentOutputText(); if (text) { await navigator.clipboard.writeText(text); notice.textContent = 'Translation copied.'; } });
 saveVoiceButton.addEventListener('click', async () => {
   const text = currentVoiceScriptText(); if (!text) return;
@@ -370,7 +433,7 @@ saveVoiceButton.addEventListener('click', async () => {
   notice.textContent = 'Voice Writer output saved as MP3.';
 });
 
+clearVoiceUi();
 await refreshNetwork();
-await refreshVoice();
 setInterval(refreshNetwork, 300);
 setInterval(refreshVoice, 300);
