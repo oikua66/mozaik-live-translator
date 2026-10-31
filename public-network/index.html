@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="/styles.css" />
 </head>
 <body>
-  <main class="shell">
+  <main id="architectureView" class="shell">
     <header class="hero">
       <div>
         <div class="eyebrow">Mozaik Freestyle 2026 · Elastic Agent Workforce</div>
@@ -50,10 +50,10 @@
     <section id="liveHandoff" class="live-handoff" hidden>
       <div>
         <span class="handoff-label">Architecture proven</span>
-        <strong>Now use the same communication idea live.</strong>
-        <p>Speak into the microphone and watch the real multi-agent voice translator work.</p>
+        <strong>Now switch from architecture to live use.</strong>
+        <p>The screen changes in place: speak into the microphone and use the working multi-agent voice translator.</p>
       </div>
-      <a class="live-button" href="http://localhost:3000">🎙 Enter Live Voice Mode</a>
+      <button id="enterLiveButton" class="live-button" type="button">🎙 Enter Live Voice Mode</button>
     </section>
 
     <section class="controls">
@@ -83,8 +83,20 @@
       <div id="eventLog" class="eventlog"></div>
     </section>
 
-    <p class="notice">Use <code>npm run showcase</code> for the full presentation: architecture demo on port 3001, then live voice mode on port 3000. The existing translator remains unchanged.</p>
+    <p class="notice">Use <code>npm run showcase</code> for the full presentation. The architecture demo and the existing live translator remain separate processes, but appear as one continuous showcase.</p>
   </main>
+
+  <section id="liveView" class="live-view" hidden aria-label="Live Voice Mode">
+    <div class="live-toolbar">
+      <button id="backToArchitecture" type="button">← Back to architecture</button>
+      <div>
+        <span>Live Voice Mode</span>
+        <small>working voice translator · separate fallback-safe process</small>
+      </div>
+    </div>
+    <iframe id="voiceFrame" title="Live Voice Translator" data-src="http://localhost:3000" allow="microphone; autoplay"></iframe>
+  </section>
+
   <script type="module" src="/app.js"></script>
 </body>
 </html>
