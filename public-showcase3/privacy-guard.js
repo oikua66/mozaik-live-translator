@@ -258,6 +258,19 @@ window.addEventListener('blur', () => privacyStop('window inactive'));
 // Navigation, reload, closing the page, mobile app backgrounding.
 window.addEventListener('pagehide', () => privacyStop('page left'));
 
+async function clearStaleServerVoiceStateOnLoad() {
+  try {
+    const response = await nativeFetch('/voice-api/clear', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    });
+    if (response.ok) resetLocalVoiceScope();
+  } catch (error) {
+    console.warn('Could not clear stale voice state on page load:', error);
+  }
+}
+
 function injectLegalUi() {
   const style = document.createElement('style');
   style.textContent = `
@@ -289,4 +302,5 @@ function injectLegalUi() {
   });
 }
 
+clearStaleServerVoiceStateOnLoad();
 injectLegalUi();
