@@ -20,15 +20,31 @@
       </div>
     </header>
 
-    <section class="stats">
-      <article><span>Sysadmin</span><strong>1</strong><small>always monitoring</small></article>
-      <article><span>Personal agents</span><strong id="personalCount">—</strong><small>active employees</small></article>
-      <article><span>Specialist agents</span><strong id="specialistCount">—</strong><small>on demand</small></article>
+    <section class="lifecycle" aria-label="Elastic lifecycle">
+      <div>
+        <span class="lifecycle-label">Elastic lifecycle</span>
+        <strong id="lifecycleTrace">—</strong>
+      </div>
+      <div class="phasebox">
+        <span>Current phase</span>
+        <strong id="phaseLabel">IDLE</strong>
+      </div>
+      <div class="eventbox">
+        <span>Module lifecycle</span>
+        <strong id="moduleLifecycle">READY</strong>
+      </div>
     </section>
 
-    <section class="controls">
+    <section class="stats">
+      <article><span>Sysadmin</span><strong>1</strong><small>permanent · monitoring</small></article>
+      <article><span>Personal agents</span><strong id="personalCount">—</strong><small>elastic · active employees</small></article>
+      <article><span>Specialist agents</span><strong id="specialistCount">—</strong><small>temporary · on demand</small></article>
+    </section>
+
+    <section class="controls demo-controls">
       <button id="scenarioButton" class="primary" type="button">▶ Run elastic workforce demo</button>
       <div class="scenario-state">Scenario: <strong id="scenarioStatus">idle</strong></div>
+      <div class="parallel-state"><span class="parallel-dot"></span><strong id="parallelStatus">No specialist work</strong></div>
     </section>
 
     <section class="controls">
