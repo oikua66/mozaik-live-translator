@@ -9,7 +9,10 @@ function switchView(name) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 enterLiveButton.addEventListener('click', () => switchView('voice'));
-backButton.addEventListener('click', () => switchView('architecture'));
+backButton.addEventListener('click', () => {
+  stopRecognition();
+  switchView('architecture');
+});
 
 async function jsonApi(path, options = {}) {
   const response = await fetch(path, {
@@ -40,7 +43,6 @@ function initials(name) {
   return String(name || '?').split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join('').toUpperCase();
 }
 
-// ---------- Architecture view ----------
 const activeAgents = document.querySelector('#activeAgents');
 const personalCount = document.querySelector('#personalCount');
 const specialistCount = document.querySelector('#specialistCount');
@@ -167,11 +169,9 @@ actionButton.addEventListener('click', async () => {
 joinButton.addEventListener('click', async () => { await jsonApi('/network-api/scenario/join-fourth', { method: 'POST', body: '{}' }); await refreshNetwork(); });
 leaveButton.addEventListener('click', async () => { await jsonApi('/network-api/scenario/two-leave', { method: 'POST', body: '{}' }); await refreshNetwork(); });
 
-// Collapse the event stream by default on narrow screens.
 const logDetails = document.querySelector('.log-details');
 if (window.matchMedia('(max-width: 760px)').matches && logDetails) logDetails.removeAttribute('open');
 
-// ---------- Voice view ----------
 const sourceLanguage = document.querySelector('#sourceLanguage');
 const targetLanguage = document.querySelector('#targetLanguage');
 const outputStyle = document.querySelector('#outputStyle');
