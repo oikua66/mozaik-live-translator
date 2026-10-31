@@ -16,6 +16,11 @@ const phaseLabel = document.querySelector('#phaseLabel');
 const moduleLifecycle = document.querySelector('#moduleLifecycle');
 const parallelStatus = document.querySelector('#parallelStatus');
 const liveHandoff = document.querySelector('#liveHandoff');
+const enterLiveButton = document.querySelector('#enterLiveButton');
+const architectureView = document.querySelector('#architectureView');
+const liveView = document.querySelector('#liveView');
+const backToArchitecture = document.querySelector('#backToArchitecture');
+const voiceFrame = document.querySelector('#voiceFrame');
 
 let stateCache = null;
 let employeeOptionsSignature = '';
@@ -39,6 +44,29 @@ function escapeHtml(value) {
     .replaceAll('>', '&gt;')
     .replaceAll('"', '&quot;')
     .replaceAll("'", '&#039;');
+}
+
+function showLiveVoice() {
+  if (!voiceFrame.src) voiceFrame.src = voiceFrame.dataset.src;
+  architectureView.classList.add('view-leaving');
+  setTimeout(() => {
+    architectureView.hidden = true;
+    architectureView.classList.remove('view-leaving');
+    liveView.hidden = false;
+    requestAnimationFrame(() => liveView.classList.add('view-visible'));
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, 180);
+}
+
+function showArchitecture() {
+  liveView.classList.remove('view-visible');
+  setTimeout(() => {
+    liveView.hidden = true;
+    architectureView.hidden = false;
+    architectureView.classList.add('view-entering');
+    requestAnimationFrame(() => architectureView.classList.remove('view-entering'));
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, 160);
 }
 
 function renderEmployees(state) {
@@ -251,6 +279,9 @@ leaveButton.addEventListener('click', async () => {
   await api('/api/scenario/two-leave', { method: 'POST', body: '{}' });
   await refresh();
 });
+
+enterLiveButton.addEventListener('click', showLiveVoice);
+backToArchitecture.addEventListener('click', showArchitecture);
 
 await refresh();
 setInterval(refresh, 250);
