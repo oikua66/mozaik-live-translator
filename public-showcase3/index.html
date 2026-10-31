@@ -11,7 +11,9 @@
     .module-panel{min-height:520px}
     .module-stage{height:405px;overflow-y:auto;overflow-x:hidden;scrollbar-gutter:stable}
     .module-stage #modules{min-height:100%;align-content:start}
-    .voice-actions{display:flex;align-items:center;gap:10px}
+    .voice-actions,.architecture-actions{display:flex;align-items:center;gap:10px}
+    .top-live-button{background:#fff;border:1px solid #d7dce7;color:#1d2939;box-shadow:none;white-space:nowrap}
+    .top-live-button:hover{border-color:#aab4d0;background:#f8f9ff}
     .mic-privacy{display:grid;grid-template-columns:auto auto;column-gap:8px;row-gap:1px;align-items:center;padding:8px 11px;border:1px solid #d0d5dd;border-radius:13px;background:#fff;min-width:132px;transition:.18s ease}
     .mic-privacy-dot{grid-row:1/3;width:11px;height:11px;border-radius:50%;background:#98a2b3;box-shadow:0 0 0 4px rgba(152,162,179,.12)}
     .mic-privacy strong{font-size:11px;letter-spacing:.06em;line-height:1.1}
@@ -21,14 +23,14 @@
     .mic-privacy.paused{border-color:#f0c36b;background:#fffbeb;color:#9a6700}
     .mic-privacy.paused .mic-privacy-dot{background:#d98c16;box-shadow:0 0 0 4px rgba(217,140,22,.12)}
     @keyframes micPulse{50%{box-shadow:0 0 0 9px rgba(229,72,77,.04)}}
-    @media(max-width:760px){.module-panel{min-height:0}.module-stage{height:360px}.voice-topbar{align-items:stretch}.voice-actions{width:100%;justify-content:space-between}.mic-privacy{flex:1}}
+    @media(max-width:760px){.module-panel{min-height:0}.module-stage{height:360px}.voice-topbar{align-items:stretch}.voice-actions{width:100%;justify-content:space-between}.mic-privacy{flex:1}.architecture-actions .chrome-note{display:none}.top-live-button{padding:10px 12px}}
   </style>
 </head>
 <body>
   <div class="ambient ambient-a"></div><div class="ambient ambient-b"></div>
   <div id="architectureView" class="view active">
     <main class="shell">
-      <nav class="topbar"><div class="brandmark"><span class="brand-orb">M</span><div><strong>Corporate Agent Network</strong><small>Built on Mozaik</small></div></div><div class="chrome-note"><span class="status-light"></span>Optimized for Chrome · Desktop &amp; Android</div></nav>
+      <nav class="topbar"><div class="brandmark"><span class="brand-orb">M</span><div><strong>Corporate Agent Network</strong><small>Built on Mozaik</small></div></div><div class="architecture-actions"><div class="chrome-note"><span class="status-light"></span>Optimized for Chrome · Desktop &amp; Android</div><button class="top-live-button" type="button" onclick="document.querySelector('#enterLiveButton').click()">🎙 Live Voice</button></div></nav>
       <header class="hero hero-architecture"><div class="hero-copy"><div class="eyebrow">Mozaik Freestyle 2026 · Elastic Agent Workforce</div><h1>AI agents that appear<br/>when the company needs them.</h1><p>Personal agents follow active employees. Temporary specialist teams are created on demand, coordinate through shared state, and disappear after the work is finished.</p><div class="hero-tags"><span>Dynamic join / leave</span><span>Parallel agents</span><span>Shared state</span><span>Real LLM</span></div></div><div class="counter glass-card"><span>Active agents</span><strong id="activeAgents">—</strong><small>live workforce</small></div></header>
       <section class="flowline" aria-label="Architecture flow"><div class="flow-node"><span class="flow-icon">👤</span><div><small>Employees</small><strong>Personal agents</strong></div></div><span class="flow-arrow">→</span><div class="flow-node"><span class="flow-icon">🛡</span><div><small>Permanent</small><strong>Sysadmin agent</strong></div></div><span class="flow-arrow">→</span><div class="flow-node accent"><span class="flow-icon">⚡</span><div><small>On demand</small><strong>Specialist module</strong></div></div><span class="flow-arrow">→</span><div class="flow-node"><span class="flow-icon">◎</span><div><small>Coordination</small><strong>Shared state</strong></div></div></section>
       <section class="lifecycle"><div><span>Elastic lifecycle</span><strong id="lifecycleTrace">—</strong><small>watch capacity expand and contract</small></div><div><span>Current phase</span><strong id="phaseLabel">IDLE</strong></div><div><span>Module lifecycle</span><strong id="moduleLifecycle">READY</strong></div></section>
