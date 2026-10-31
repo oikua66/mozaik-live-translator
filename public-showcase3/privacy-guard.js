@@ -17,6 +17,7 @@ let pendingFinalTimer = null;
 let recentSubmittedFinal = '';
 let recentSubmittedAt = 0;
 let micRestartBypass = false;
+let pendingVoiceConfig = null;
 
 function requestUrl(input) {
   if (typeof input === 'string') return input;
@@ -190,20 +191,30 @@ window.fetch = async function scopedVoiceFetch(input, init = {}) {
   if (url.includes('/voice-api/config') && method === 'POST') {
     let requested = {};
     try { requested = JSON.parse(init.body || '{}'); } catch {}
+    pendingVoiceConfig = { ...requested };
     resetPendingFinal();
     const response = await nativeFetch('/voice-api/clear', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(requested),
+      body: JSON.stringify(pendingVoiceConfig),
     });
-    if (response.ok) resetLocalVoiceScope();
+    if (response.ok) {
+      resetLocalVoiceScope();
+      pendingVoiceConfig = null;
+    }
     return response;
   }
 
   if (url.includes('/voice-api/clear') && method === 'POST') {
     resetPendingFinal();
-    const response = await nativeFetch(input, init);
-    if (response.ok) resetLocalVoiceScope();
+    let requested = {};
+    try { requested = JSON.parse(init.body || '{}'); } catch {}
+    const body = pendingVoiceConfig ? JSON.stringify(pendingVoiceConfig) : JSON.stringify(requested);
+    const response = await nativeFetch(input, { ...init, body });
+    if (response.ok) {
+      resetLocalVoiceScope();
+      pendingVoiceConfig = null;
+    }
     return response;
   }
 
@@ -227,7 +238,6 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('blur', () => privacyStop('window inactive'));
 window.addEventListener('pagehide', () => privacyStop('page left'));
 
-// A manual microphone stop followed by Start is treated as a new spoken session.
 if (micButton) {
   micButton.addEventListener('click', (event) => {
     if (micRestartBypass) {
@@ -261,16 +271,14 @@ if (micButton) {
   }, true);
 }
 
-// The app's normal language/style handler only posts /config once. If agents are
-// still finishing the previous phrase that request can get HTTP 409, after which
-// polling restores the old language. It also does not reset the private TTS cursor.
-// Route every source/target/style change through the app's Clear button instead:
-// Clear already stops recognition, resets lastSpokenFragmentId, clears the UI,
-// retries until agents are idle, and sends the currently selected configuration.
 ['sourceLanguage', 'targetLanguage', 'outputStyle'].forEach((id) => {
   const control = document.querySelector(`#${id}`);
   if (!control) return;
   control.addEventListener('change', (event) => {
+    const sourceLanguage = document.querySelector('#sourceLanguage')?.value;
+    const targetLanguage = document.querySelector('#targetLanguage')?.value;
+    const outputStyle = document.querySelector('#outputStyle')?.value;
+    pendingVoiceConfig = { sourceLanguage, targetLanguage, outputStyle };
     event.stopImmediatePropagation();
     const clearButton = document.querySelector('#clearButton');
     if (clearButton) clearButton.click();
