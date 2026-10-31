@@ -51,10 +51,6 @@ async function readJson(req) {
   return raw ? JSON.parse(raw) : {};
 }
 
-// ---------------------------------------------------------------------------
-// Corporate Agent Network runtime
-// ---------------------------------------------------------------------------
-
 initializeNetworkRuntime({ state: new CorporateNetworkState() });
 
 const networkController = createAgent({
@@ -79,6 +75,7 @@ const initialEmployees = [
     office: "BVI Head Office",
     language: "English",
     role: "Operations Director",
+    voicePreference: "male",
     sampleText: "Please send the revised contract to Kyiv before 4 PM and confirm when it is received.",
   },
   {
@@ -87,6 +84,7 @@ const initialEmployees = [
     office: "Kyiv Office",
     language: "Ukrainian",
     role: "Project Manager",
+    voicePreference: "female",
     sampleText: "Будь ласка, перевірте останню версію договору і повідомте, чи можемо ми підписати його сьогодні.",
   },
   {
@@ -95,6 +93,7 @@ const initialEmployees = [
     office: "Novi Sad Office",
     language: "Serbian",
     role: "Engineer",
+    voicePreference: "male",
     sampleText: "Molim vas proverite tehničku specifikaciju i javite da li možemo da počnemo u ponedeljak.",
   },
 ];
@@ -104,6 +103,7 @@ const fourthEmployee = {
   office: "Tel Aviv Office",
   language: "Hebrew",
   role: "Legal Counsel",
+  voicePreference: "female",
   sampleText: "בבקשה בדקו את הנוסח האחרון ואשרו אם אפשר לשלוח אותו ללקוח היום.",
 };
 for (const profile of initialEmployees) registerEmployee(profile);
@@ -114,11 +114,7 @@ function networkSnapshot() {
   const state = resolveNetworkRuntime().state;
   const employees = [...state.employees.values()].map((employee) => {
     const record = state.personalAgents.get(employee.id);
-    return {
-      ...employee,
-      agentId: record?.agent?.getId?.() || null,
-      joinedAt: record?.joinedAt || null,
-    };
+    return { ...employee, agentId: record?.agent?.getId?.() || null, joinedAt: record?.joinedAt || null };
   });
   const modules = [...state.activeModules.values()].map((module) => ({
     id: module.id,
@@ -182,8 +178,7 @@ async function waitForCommunicationIdle(timeoutMs = 30000) {
     const state = resolveNetworkRuntime().state;
     const module = [...state.activeModules.values()].find((item) => item.type === "Communication Module");
     if (!module) return true;
-    const busy = module.members.some((member) => member.busy || member.queue.length);
-    if (!busy) return true;
+    if (!module.members.some((member) => member.busy || member.queue.length)) return true;
     await sleep(150);
   }
   return false;
@@ -204,54 +199,36 @@ async function runElasticScenario() {
   if (scenario.running) return;
   scenario = { running: true, step: "reset", startedAt: Date.now(), completedAt: null };
   await resetDemoTopology();
-
   const state = resolveNetworkRuntime().state;
   state.log("scenario.start", "Elastic workforce demo started");
   await sleep(600);
-
-  // One real request is enough to prove dynamic spawn + concurrent specialists + shared state.
-  // Keeping the automatic demo to one request prevents a large inference backlog before live voice mode.
   scenario.step = "live-communication-request";
   triggerEmployeeAction(networkController, "novi-sad-marko");
-
   scenario.step = "waiting-for-coordination";
-  const idle = await waitForCommunicationIdle();
-  if (!idle) state.log("scenario.timeout", "Communication Module did not become idle before timeout");
-
+  if (!(await waitForCommunicationIdle())) state.log("scenario.timeout", "Communication Module did not become idle before timeout");
   scenario.step = "waiting-for-release";
-  const released = await waitForCommunicationRelease();
-  if (!released) {
+  if (!(await waitForCommunicationRelease())) {
     state.log("scenario.timeout", "Communication Module did not release before timeout; forcing release");
     for (const moduleId of [...state.activeModules.keys()]) teardownModule(moduleId);
     await sleep(500);
   }
-
-  // Leave the released 4-agent state visible long enough for UI polling to capture it.
   scenario.step = "module-released";
   await sleep(1400);
-
   scenario.step = "fourth-employee-joins";
   registerEmployee(fourthEmployee);
   state.log("scenario.join", "A fourth office came online: Sarah joined from Tel Aviv");
   await sleep(1400);
-
   scenario.step = "first-employee-leaves";
   removeEmployee("bvi-james");
   state.log("scenario.leave", "James Personal Agent left; capacity contracted automatically");
   await sleep(1400);
-
   scenario.step = "second-employee-leaves";
   removeEmployee("novi-sad-marko");
   state.log("scenario.leave", "Marko Personal Agent left; capacity contracted automatically");
   await sleep(1400);
-
   scenario = { running: false, step: "complete", startedAt: scenario.startedAt, completedAt: Date.now() };
   state.log("scenario.complete", "Elastic workforce demo completed");
 }
-
-// ---------------------------------------------------------------------------
-// Live Voice Communication runtime
-// ---------------------------------------------------------------------------
 
 initializeVoiceRuntime({
   state: new TranslatorState({ sourceLanguage: "ru", targetLanguage: "en", outputStyle: "polite" }),
@@ -262,6 +239,7 @@ joinVoice(editorAgent);
 joinVoice(voiceWriterAgent);
 
 let nextFragmentId = 1;
+const speechCache = new Map();
 
 function voiceSnapshot() {
   const state = resolveVoiceRuntime().state;
@@ -300,20 +278,44 @@ function resetVoiceState({ sourceLanguage, targetLanguage, outputStyle }) {
   return true;
 }
 
-async function createSpeech(text) {
+function normalizeVoicePreference(value) {
+  return ["female", "male", "neutral"].includes(value) ? value : "auto";
+}
+
+function speechProfile(preference) {
+  const pref = normalizeVoicePreference(preference);
+  if (pref === "female") return {
+    voice: "marin",
+    instructions: "Speak in a warm, professional feminine presentation. Natural conversational pace, clear pronunciation, no theatrical delivery.",
+  };
+  if (pref === "male") return {
+    voice: "cedar",
+    instructions: "Speak in a calm, professional masculine presentation. Natural conversational pace, clear pronunciation, no theatrical delivery.",
+  };
+  if (pref === "neutral") return {
+    voice: "alloy",
+    instructions: "Speak in a neutral professional presentation. Natural conversational pace, clear pronunciation, no theatrical delivery.",
+  };
+  return {
+    voice: "marin",
+    instructions: "Speak naturally and professionally at a relaxed conversational pace with clear pronunciation.",
+  };
+}
+
+async function createSpeech(text, preference = "auto") {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("OPENAI_API_KEY is not set");
+  const profile = speechProfile(preference);
   const response = await fetch("https://api.openai.com/v1/audio/speech", {
     method: "POST",
-    headers: {
-      authorization: `Bearer ${apiKey}`,
-      "content-type": "application/json",
-    },
+    headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
     body: JSON.stringify({
       model: "gpt-4o-mini-tts-2025-12-15",
-      voice: "marin",
+      voice: profile.voice,
+      instructions: profile.instructions,
       input: text,
       response_format: "mp3",
+      speed: 0.9,
     }),
   });
   if (!response.ok) {
@@ -323,13 +325,30 @@ async function createSpeech(text) {
   return Buffer.from(await response.arrayBuffer());
 }
 
-// ---------------------------------------------------------------------------
-// Unified HTTP routes
-// ---------------------------------------------------------------------------
+async function cachedSpeech(text, preference = "auto") {
+  const pref = normalizeVoicePreference(preference);
+  const key = `${pref}\n${text}`;
+  let audio = speechCache.get(key);
+  if (!audio) {
+    audio = await createSpeech(text, pref);
+    speechCache.set(key, audio);
+    if (speechCache.size > 50) speechCache.delete(speechCache.keys().next().value);
+  }
+  return audio;
+}
+
+function sendAudio(res, audio, disposition = "inline") {
+  res.writeHead(200, {
+    "content-type": "audio/mpeg",
+    "content-disposition": disposition,
+    "content-length": audio.length,
+    "cache-control": "no-store",
+  });
+  res.end(audio);
+}
 
 async function handleNetworkApi(req, res, path) {
   if (req.method === "GET" && path === "/state") return json(res, 200, networkSnapshot());
-
   if (req.method === "POST" && path === "/action") {
     const body = await readJson(req);
     const employeeId = String(body.employeeId || "");
@@ -338,7 +357,6 @@ async function handleNetworkApi(req, res, path) {
     triggerEmployeeAction(networkController, employeeId, body.text ? String(body.text) : null);
     return json(res, 202, networkSnapshot());
   }
-
   if (req.method === "POST" && path === "/scenario/run") {
     if (scenario.running) return json(res, 409, { error: "Scenario is already running." });
     runElasticScenario().catch((error) => {
@@ -348,24 +366,20 @@ async function handleNetworkApi(req, res, path) {
     });
     return json(res, 202, networkSnapshot());
   }
-
   if (req.method === "POST" && path === "/scenario/join-fourth") {
     registerEmployee(fourthEmployee);
     return json(res, 201, networkSnapshot());
   }
-
   if (req.method === "POST" && path === "/scenario/two-leave") {
     removeEmployee("bvi-james");
     removeEmployee("novi-sad-marko");
     return json(res, 200, networkSnapshot());
   }
-
   return json(res, 404, { error: "Unknown network API route." });
 }
 
 async function handleVoiceApi(req, res, path) {
   if (req.method === "GET" && path === "/state") return json(res, 200, voiceSnapshot());
-
   if (req.method === "POST" && path === "/config") {
     const body = await readJson(req);
     const state = resolveVoiceRuntime().state;
@@ -377,7 +391,6 @@ async function handleVoiceApi(req, res, path) {
     state.outputStyle = body.outputStyle || state.outputStyle;
     return json(res, 200, voiceSnapshot());
   }
-
   if (req.method === "POST" && path === "/fragment") {
     const body = await readJson(req);
     const text = String(body.text || "").trim();
@@ -386,38 +399,27 @@ async function handleVoiceApi(req, res, path) {
     const serverReceivedAt = Date.now();
     const clientFinalAt = Number(body.clientFinalAt || 0) || null;
     console.log(`⏱ voice #${id} speech-final → unified server: ${clientFinalAt ? serverReceivedAt - clientFinalAt : "n/a"} ms`);
-    const event = SemanticEvent.create("source.fragment", inputAgent.getId(), {
-      id,
-      text,
-      clientFinalAt,
-      serverReceivedAt,
-    });
+    const event = SemanticEvent.create("source.fragment", inputAgent.getId(), { id, text, clientFinalAt, serverReceivedAt });
     sendVoiceEvent(event, inputAgent.getId());
     return json(res, 202, { id });
   }
-
   if (req.method === "POST" && path === "/clear") {
     const body = await readJson(req);
     if (!resetVoiceState(body)) return json(res, 409, { error: "Agents are still processing." });
     return json(res, 200, voiceSnapshot());
   }
-
-  if (req.method === "POST" && path === "/save-voice") {
+  if (req.method === "POST" && (path === "/speech" || path === "/save-voice")) {
     const body = await readJson(req);
     const text = String(body.text || "").trim();
-    if (!text) return json(res, 400, { error: "No voice script to save." });
+    if (!text) return json(res, 400, { error: "No voice script to speak." });
     if (text.length > 4096) return json(res, 400, { error: "Voice script is too long for one audio file." });
-    const audio = await createSpeech(text);
-    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-    res.writeHead(200, {
-      "content-type": "audio/mpeg",
-      "content-disposition": `attachment; filename=translator-voice-${stamp}.mp3`,
-      "content-length": audio.length,
-      "cache-control": "no-store",
-    });
-    return res.end(audio);
+    const preference = normalizeVoicePreference(String(body.voicePreference || "auto"));
+    const audio = await cachedSpeech(text, preference);
+    if (path === "/save-voice") {
+      return sendAudio(res, audio, `attachment; filename=translator-voice-${preference}.mp3`);
+    }
+    return sendAudio(res, audio, "inline");
   }
-
   return json(res, 404, { error: "Unknown voice API route." });
 }
 
@@ -456,6 +458,6 @@ server.listen(PORT, () => {
   const mode = process.env.OPENAI_API_KEY && process.env.NETWORK_LLM !== "0" ? "real LLM" : "fallback";
   console.log(`\n🏢 Unified Corporate Agent Product: http://localhost:${PORT}`);
   console.log(`Network module: ${mode}`);
-  console.log("Live voice module: integrated in the same process and origin.");
+  console.log("Live voice module: browser speech recognition + OpenAI AI TTS.");
   console.log("Backup products remain untouched: npm run web / npm run network-demo.\n");
 });
